@@ -1,0 +1,10 @@
+{
+  "name": "CE DF Photos",
+  "short_name": "DF Photos",
+  "description": "Photo capture and review for fiber optic installation",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": []
+}
