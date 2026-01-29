@@ -13,7 +13,8 @@
     "test:api:full": "node scripts/test-api-full.mjs http://127.0.0.1:3000",
     "test:init-db": "node scripts/init-db-full.mjs",
     "seed:checkpoints": "tsx scripts/seed-checkpoints.ts",
-    "db:setup": "tsx scripts/setup-db.ts"
+    "db:setup": "tsx scripts/setup-db.ts",
+    "push": "git push -u origin main"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.978.0",
