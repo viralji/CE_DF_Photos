@@ -19,3 +19,5 @@ Open http://localhost:3000. For local testing without Azure AD, set cookie **dev
 **Testing:** See [TESTING.md](./TESTING.md) for build, DB smoke test, API test script, and manual E2E checklist.
 
 **Deploy:** See [DEPLOY.md](./DEPLOY.md) for Digital Ocean (PM2, Nginx, HTTPS).
+
+**Push to your Git:** Remote `origin` is set to `https://github.com/viralji/CE_DF_Photos.git`. Create that repo on GitHub (empty, no README), then run: `git push -u origin main`.
