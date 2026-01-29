@@ -37,6 +37,7 @@ export default function AdminPage() {
   const [message, setMessage] = useState('');
   const [bulkMessage, setBulkMessage] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [seedLoading, setSeedLoading] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
@@ -98,6 +99,25 @@ export default function AdminPage() {
     setTimeout(() => setMessage(''), 3000);
     setSubsectionId(''); setSubsectionName('');
     queryClient.invalidateQueries({ queryKey: ['subsections'] });
+  }
+
+  async function reseedCheckpoints() {
+    setSeedLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/checkpoints/seed', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(`❌ Seed failed: ${data.error || 'Unknown error'}`);
+        return;
+      }
+      setMessage(`✓ Seed complete! Inserted ${data.inserted} new checkpoint(s). Total: ${data.total}.`);
+      queryClient.invalidateQueries({ queryKey: ['checkpoints'] });
+    } catch (e) {
+      setMessage(`❌ ${(e as Error).message}`);
+    } finally {
+      setSeedLoading(false);
+    }
   }
 
   async function handleBulkRoutes(file: File | null) {
@@ -279,14 +299,25 @@ export default function AdminPage() {
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h2 className="font-semibold text-slate-900 text-sm mb-2">Checkpoint Reference (3-digit codes)</h2>
-          <p className="text-xs text-slate-500 mb-3">Photo filenames use entity code and checkpoint code.</p>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-semibold text-slate-900 text-sm">Checkpoint Reference (3-digit codes)</h2>
+              <p className="text-xs text-slate-500">Photo filenames use entity code and checkpoint code. All checkpoints from the database are listed below.</p>
+            </div>
+            <button
+              onClick={reseedCheckpoints}
+              disabled={seedLoading}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              {seedLoading ? 'Seeding…' : 'Re-seed from JSON'}
+            </button>
+          </div>
           {checkpoints.length === 0 ? (
-            <p className="text-slate-500 text-sm">Run database seed to load checkpoints.</p>
+            <p className="text-slate-500 text-sm">Run database seed to load checkpoints: <code className="bg-slate-100 px-1 rounded">npm run seed:checkpoints</code> or <code className="bg-slate-100 px-1 rounded">node scripts/init-db-full.mjs</code></p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
                     <th className="text-left p-2 font-semibold text-slate-700">Entity</th>
                     <th className="text-left p-2 font-semibold text-slate-700">Entity code</th>
@@ -295,7 +326,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {checkpoints.slice(0, 20).map((c) => (
+                  {checkpoints.map((c) => (
                     <tr key={c.id} className="hover:bg-slate-50">
                       <td className="p-2 font-medium text-slate-900">{c.entity}</td>
                       <td className="p-2 font-mono font-semibold text-blue-600">{entityCodeMap.get(c.entity || '') ?? '—'}</td>
@@ -305,10 +336,13 @@ export default function AdminPage() {
                   ))}
                 </tbody>
               </table>
-              {checkpoints.length > 20 && (
-                <p className="text-xs text-slate-500 mt-3">Showing first 20 of {checkpoints.length}</p>
-              )}
+              <p className="text-xs text-slate-500 mt-3">{checkpoints.length} checkpoint{checkpoints.length !== 1 ? 's' : ''} total.</p>
             </div>
+          )}
+          {checkpoints.length > 0 && (
+            <p className="text-xs text-amber-700 mt-3 bg-amber-50 border border-amber-200 rounded p-2">
+              If you see only one checkpoint per entity, re-run the seed to load all rows from <code>checkpoints_data.json</code>: <code className="bg-white/80 px-1 rounded">npm run seed:checkpoints</code>
+            </p>
           )}
         </div>
       </main>
