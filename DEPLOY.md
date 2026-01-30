@@ -73,8 +73,10 @@ npm run seed:checkpoints
 ## 4. Run with PM2 (no disruption on restart)
 
 ```bash
-# Start the app
-pm2 start npm --name "ce-df-photos" -- start
+# From the app directory (CE_DF_Photos)
+pm2 start ecosystem.config.js
+
+# Or without ecosystem: pm2 start npm --name "ce-df-photos" -- start
 
 # Save PM2 process list so it survives reboot
 pm2 save
@@ -123,11 +125,21 @@ pm2 restart ce-df-photos
 ## 6. Updates (zero-downtime style)
 
 ```bash
-cd CE_DF_Photos
+cd /path/to/CE_DF_Photos
 git pull
 npm ci
 npm run build
 pm2 restart ce-df-photos
+```
+
+**First time using ecosystem.config.js:**  
+Stop the app, then start with the config so `cwd` and port are correct:
+
+```bash
+pm2 delete ce-df-photos
+cd /path/to/CE_DF_Photos
+pm2 start ecosystem.config.js
+pm2 save
 ```
 
 ## 7. Verify deployment (run after deploy)
@@ -162,6 +174,19 @@ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3001/
 
 ## Troubleshooting
 
-- **DB errors:** Ensure `data/` exists and is writable; run `npm run db:setup` again.
-- **Auth redirect:** `NEXTAUTH_URL` must match the URL users use (http vs https, domain vs IP).
+- **App not running / crashes:**  
+  `pm2 logs ce-df-photos` — check for "Error", "EADDRINUSE", or missing modules.  
+  If port 3001 is in use: `lsof -i :3001` or `ss -tlnp | grep 3001`; stop the other process or change PORT in `.env` and ecosystem.
+
+- **Build fails on server:**  
+  Use Node 20+: `node -v`.  
+  If `better-sqlite3` fails: `npm rebuild` or `rm -rf node_modules && npm ci`.
+
+- **DB errors:** Ensure `data/` exists and is writable; run `npm run db:setup` again.  
+  If using `DATABASE_PATH`, ensure that directory exists and is writable.
+
+- **Auth redirect / sign-in loop:** `NEXTAUTH_URL` must match the URL users use (e.g. `https://your-domain.com` or `http://droplet-ip:3001`). No trailing slash. Restart after changing: `pm2 restart ce-df-photos`.
+
+- **502 Bad Gateway (Nginx):** App not listening on 3001. Check `pm2 status` and `pm2 logs`; fix app then `sudo systemctl reload nginx`.
+
 - **S3/Azure:** Verify env vars; no trailing spaces in `.env`.
