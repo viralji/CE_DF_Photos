@@ -138,11 +138,23 @@ export default function MapPage() {
         const polyline = Leaflet.polyline(latLngs, { color: '#2563eb', weight: 4, opacity: 0.8 }).addTo(map);
         polylineLayerRef.current = polyline;
       }
+      const locationPinIcon = Leaflet.divIcon({
+        className: 'ce-df-photos-location-marker',
+        html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" title="Photo location">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#2563eb"/>
+            <circle cx="12" cy="9" r="2.5" fill="white"/>
+          </svg>
+        </div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 28],
+      });
+
       photosWithLocation.forEach((photo: { latitude?: number; longitude?: number; id: number; filename?: string; checkpoint_name?: string; entity?: string; execution_stage?: string; status?: string }) => {
         if (photo.latitude == null || photo.longitude == null) return;
         const imageUrl = `/api/photos/${photo.id}/image`;
         const viewFullUrl = `/view-photo/${photo.id}`;
-        Leaflet.marker([photo.latitude, photo.longitude])
+        Leaflet.marker([photo.latitude, photo.longitude], { icon: locationPinIcon })
           .addTo(map)
           .bindPopup(
             `<div style="min-width: 200px;">

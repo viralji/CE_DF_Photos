@@ -126,6 +126,12 @@ img:not([loading]) {
   }
 }
 
+/* Map: custom location pin marker (no default Leaflet icon box) */
+.ce-df-photos-location-marker.leaflet-div-icon {
+  background: none !important;
+  border: none !important;
+}
+
 /* Print styles */
 @media print {
   /* Hide navigation and interactive elements */
