@@ -130,6 +130,31 @@ npm run build
 pm2 restart ce-df-photos
 ```
 
+## 7. Verify deployment (run after deploy)
+
+**On the server (SSH):**
+
+```bash
+# PM2 and app
+pm2 status
+pm2 logs ce-df-photos --lines 20
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3001/
+# Expect: 200 or 307
+```
+
+**From your machine (browser + optional scripts):**
+
+1. **Quick health check** (no auth):
+   ```bash
+   ./scripts/verify-server.sh https://your-domain.com
+   ```
+2. Open **https://your-domain.com** (or **http://your-droplet-ip:3001**) in a browser and sign in (Azure AD or dev-bypass if configured).
+3. Manually check: **Dashboard** → **Capture** → **Gallery** (select route/subsection, thumbnails load) → **Review** (click red pending number, photos load) → **Map** (select route, markers and line show) → open a photo (**View full**), image and burned geo show.
+4. Optional full API test (server must allow dev-bypass cookie or use real session):
+   ```bash
+   node scripts/test-api-full.mjs https://your-domain.com
+   ```
+
 ## Health check
 
 - App: `http://your-droplet-ip:3001` or `https://your-domain.com`
