@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3001",
     "lint": "eslint",
     "test": "npm run build",
     "test:db": "node scripts/test-db.mjs",
     "test:api": "bash scripts/test-api.sh",
-    "test:api:full": "node scripts/test-api-full.mjs http://127.0.0.1:3000",
+    "test:api:full": "node scripts/test-api-full.mjs http://127.0.0.1:3001",
     "test:init-db": "node scripts/init-db-full.mjs",
     "seed:checkpoints": "tsx scripts/seed-checkpoints.ts",
     "db:setup": "tsx scripts/setup-db.ts",
@@ -33,13 +33,13 @@
     "sharp": "^0.34.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "~4.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
+    "tailwindcss": "^4.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5"
   }

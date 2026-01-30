@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4: use @import (v3 @tailwind directives are not supported) */
+@import 'tailwindcss';
 
 /* Smooth scrolling */
 html {

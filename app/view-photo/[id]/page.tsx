@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { PhotoImage } from '@/components/PhotoImage';
 
 async function getPhoto(id: string) {
   const res = await fetch(`/api/photos/${id}`);
@@ -56,7 +57,6 @@ export default function ViewPhotoPage() {
     );
   }
 
-  const imageUrl = `/api/photos/${photo.id}/image`;
   const accuracy = photo.location_accuracy;
   const createdAt = photo.created_at;
   const placeState = geocode && (geocode.place || geocode.state)
@@ -69,7 +69,7 @@ export default function ViewPhotoPage() {
         <Link href="/dashboard" className="text-slate-500 hover:text-slate-700 text-sm mb-4 inline-block">← Dashboard</Link>
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <div className="relative">
-            <img src={imageUrl} alt={photo.filename || ''} className="w-full h-auto block" />
+            <PhotoImage photoId={photo.id} alt={photo.filename || ''} className="w-full h-auto block" />
             {hasCoords && (
               <div key="geo-overlay" className="absolute bottom-3 left-3 w-max max-w-[min(260px,80%)] bg-black/40 backdrop-blur-sm text-white text-xs px-2.5 py-2 rounded-lg shadow font-mono">
                 <p>{lat!.toFixed(5)}° {lat! >= 0 ? 'N' : 'S'}, {lng!.toFixed(5)}° {lng! >= 0 ? 'E' : 'W'}</p>

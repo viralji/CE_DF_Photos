@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { PhotoImage } from '@/components/PhotoImage';
 
 async function getRoutes() {
   const res = await fetch('/api/routes');
@@ -128,8 +129,8 @@ export default function GalleryPage() {
                               rel="noopener noreferrer"
                               className="group relative aspect-square rounded-md overflow-hidden bg-slate-100 hover:ring-2 hover:ring-blue-400 transition-all"
                             >
-                              <img
-                                src={`/api/photos/${photo.id}/image`}
+                              <PhotoImage
+                                photoId={photo.id}
                                 alt=""
                                 className="w-full h-full object-cover"
                               />
