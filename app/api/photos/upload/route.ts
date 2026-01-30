@@ -3,19 +3,24 @@ import { getSessionOrDevBypass } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
 import { uploadToS3, getS3Key } from '@/lib/s3';
 import { compressImage, getImageMetadata, burnGeoOverlay } from '@/lib/image-compression';
+import { reverseGeocode, formatLocationForBurn } from '@/lib/geocode';
 import { to3CharCode, uniqueCheckpointCodes, uniqueEntityCodes } from '@/lib/photo-filename';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-/** IST date YYYYMMDD and time HHMMSS. */
-function istDateAndTime(): { dateStr: string; timeStr: string } {
-  const now = new Date();
+/** IST date YYYYMMDD and time HHMMSS (Asia/Kolkata). */
+function istDateAndTime(at: Date = new Date()): { dateStr: string; timeStr: string } {
   const opts: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
-  const parts = new Intl.DateTimeFormat('en-CA', opts).formatToParts(now);
+  const parts = new Intl.DateTimeFormat('en-CA', opts).formatToParts(at);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   const dateStr = `${get('year')}${get('month')}${get('day')}`;
   const timeStr = `${get('hour')}${get('minute')}${get('second')}`;
   return { dateStr, timeStr };
+}
+
+/** IST display string for geo overlay (same timezone as filename). */
+function istDisplayForOverlay(at: Date): string {
+  return at.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'medium' }) + ' IST';
 }
 
 function buildPhotoFilename(params: {
@@ -26,12 +31,13 @@ function buildPhotoFilename(params: {
   executionStage: string;
   photoIndex: number;
   extension: string;
+  dateStr: string;
+  timeStr: string;
 }): string {
   const stageLetter =
     params.executionStage === 'Before' || params.executionStage === 'B' ? 'B' :
     params.executionStage === 'Ongoing' || params.executionStage === 'O' ? 'O' : 'A';
-  const { dateStr, timeStr } = istDateAndTime();
-  return `${params.routeId}-${params.subsectionId}-${params.entityCode}-${params.checkpointCode}-${stageLetter}-${params.photoIndex}-${dateStr}-${timeStr}.${params.extension}`;
+  return `${params.routeId}-${params.subsectionId}-${params.entityCode}-${params.checkpointCode}-${stageLetter}-${params.photoIndex}-${params.dateStr}-${params.timeStr}.${params.extension}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -107,14 +113,22 @@ export async function POST(request: NextRequest) {
 
     const lat = latitude ? parseFloat(latitude) : null;
     const lng = longitude ? parseFloat(longitude) : null;
+    const captureDate = new Date();
+    const { dateStr, timeStr } = istDateAndTime(captureDate);
+    const istTimestampDisplay = istDisplayForOverlay(captureDate);
+
     if (lat != null && lng != null && metadata.width && metadata.height) {
+      const { place, state } = await reverseGeocode(lat, lng);
+      const locationBurn = formatLocationForBurn(place, state);
+
       compressedBuffer = await burnGeoOverlay(compressedBuffer, {
         width: metadata.width,
         height: metadata.height,
         latitude: lat,
         longitude: lng,
         accuracy: locationAccuracy ? parseFloat(locationAccuracy) : undefined,
-        timestamp: new Date().toISOString(),
+        timestamp: istTimestampDisplay,
+        location: locationBurn ?? undefined,
       });
       metadata = await getImageMetadata(compressedBuffer);
     }
@@ -128,6 +142,8 @@ export async function POST(request: NextRequest) {
       executionStage,
       photoIndex,
       extension,
+      dateStr,
+      timeStr,
     });
     const s3Key = getS3Key(filename);
     await uploadToS3(s3Key, compressedBuffer, `image/${format}`);

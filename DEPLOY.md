@@ -95,7 +95,7 @@ server {
     listen 80;
     server_name your-domain.com;
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -132,7 +132,7 @@ pm2 restart ce-df-photos
 
 ## Health check
 
-- App: `http://your-droplet-ip:3000` or `https://your-domain.com`
+- App: `http://your-droplet-ip:3001` or `https://your-domain.com`
 - PM2: `pm2 status` and `pm2 logs ce-df-photos`
 
 ## Troubleshooting

@@ -4,6 +4,8 @@ Photo capture and review system for fiber optic installation quality control. Mo
 
 **Stack:** Next.js 16, SQLite, NextAuth (Azure AD), AWS S3, IndexedDB (offline).
 
+**Features:** Geo-tagged capture (high-accuracy GPS, watchPosition); geo + location + IST timestamp burned into image at upload; gallery and view-photo; review/approve; map with markers and route line (nearest-neighbor from endpoints); reports; admin. Auth: Next.js proxy (not middleware), dev-bypass cookie for local testing.
+
 ## Quick start
 
 ```bash
@@ -14,10 +16,8 @@ npm run seed:checkpoints
 npm run dev
 ```
 
-Open http://localhost:3000. For local testing without Azure AD, set cookie **dev-bypass-auth** = **true** (DevTools → Application → Cookies).
+Open **http://localhost:3001**. For local testing without Azure AD, set cookie **dev-bypass-auth** = **true** (DevTools → Application → Cookies). Ensure `NEXTAUTH_URL=http://localhost:3001` in `.env` when using port 3001.
 
-**Testing:** See [TESTING.md](./TESTING.md) for build, DB smoke test, API test script, and manual E2E checklist.
-
-**Deploy:** See [DEPLOY.md](./DEPLOY.md) for Digital Ocean (PM2, Nginx, HTTPS).
-
-**Push to your Git:** Remote `origin` is set to `https://github.com/viralji/CE_DF_Photos.git`. Create that repo on GitHub (empty, no README), then run: `git push -u origin main`.
+- **Testing:** [TESTING.md](./TESTING.md) — build, DB smoke test, API scripts, manual E2E checklist.
+- **Deploy:** [DEPLOY.md](./DEPLOY.md) — Digital Ocean (PM2, Nginx, HTTPS).
+- **Push:** Remote `origin` → `https://github.com/viralji/CE_DF_Photos.git`; then `git push -u origin main`.

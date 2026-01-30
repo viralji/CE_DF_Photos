@@ -33,7 +33,7 @@ export default function ReviewPage() {
     queryFn: async () => (await fetch('/api/review/summary')).json(),
   });
 
-  const [routeId, subsectionId] = selected ? selected.split('-').map(Number) : [null, null];
+  const [routeId, subsectionId] = selected ? selected.split('::') : [null, null];
 
   const { data: photosData } = useQuery({
     queryKey: ['review-photos', routeId, subsectionId],
@@ -232,31 +232,52 @@ export default function ReviewPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {summary.map((row, idx) => (
-                      <tr key={`${row.route_id}-${row.subsection_id}-${idx}`} className="hover:bg-slate-50">
-                        <td className="p-3 font-medium text-slate-900">{row.route_name || `Route ${row.route_id}`}</td>
-                        <td className="p-3 text-slate-700">{row.subsection_name || `Sub ${row.subsection_id}`}</td>
-                        <td className="p-3 text-center">
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-green-100 text-green-700 font-semibold text-xs">{row.approved_count}</span>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-100 text-amber-700 font-semibold text-xs">{row.pending_count}</span>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 text-red-700 font-semibold text-xs">{row.rejected_count}</span>
-                        </td>
-                        <td className="p-3 text-center">
-                          {(row.pending_count > 0 || row.rejected_count > 0) && (
-                            <button
-                              onClick={() => setSelected(`${row.route_id}-${row.subsection_id}`)}
-                              className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700"
-                            >
-                              Review
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {summary.map((row, idx) => {
+                      const rowKey = `${String(row.route_id)}::${String(row.subsection_id)}`;
+                      const hasReviewable = row.pending_count > 0 || row.rejected_count > 0;
+                      return (
+                        <tr key={`${rowKey}-${idx}`} className="hover:bg-slate-50">
+                          <td className="p-3 font-medium text-slate-900">{row.route_name || `Route ${row.route_id}`}</td>
+                          <td className="p-3 text-slate-700">{row.subsection_name || `Sub ${row.subsection_id}`}</td>
+                          <td className="p-3 text-center">
+                            <span className="inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-full bg-blue-100 text-blue-700 font-semibold text-xs">{row.approved_count}</span>
+                          </td>
+                          <td className="p-3 text-center">
+                            {hasReviewable ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelected(rowKey)}
+                                className="inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-full bg-red-100 text-red-700 font-semibold text-xs hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-400"
+                                title="Review pending / rejected"
+                              >
+                                {row.pending_count}
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-full bg-blue-100 text-blue-700 font-semibold text-xs">{row.pending_count}</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center">
+                            {hasReviewable ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelected(rowKey)}
+                                className="inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-full bg-blue-100 text-blue-700 font-semibold text-xs hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                title="Review rejected"
+                              >
+                                {row.rejected_count}
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded-full bg-blue-100 text-blue-700 font-semibold text-xs">{row.rejected_count}</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center" aria-hidden="true">
+                            {hasReviewable ? (
+                              <span className="text-slate-400 text-xs">Click number to review</span>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {summary.length === 0 && (
                       <tr>
                         <td colSpan={6} className="p-6 text-center text-slate-500 text-sm">

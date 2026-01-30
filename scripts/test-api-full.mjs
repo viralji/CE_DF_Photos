@@ -36,10 +36,8 @@ async function main() {
   r = await req('GET', '/');
   ok('GET /', r.status === 200 || r.status === 307, r.status);
 
-  r = await req('GET', '/api/routes');
-  ok('GET /api/routes (no cookie)', r.status === 401, 'expect 401');
   const noCookie = await fetch(BASE + '/api/routes');
-  ok('GET /api/routes without cookie returns 401', noCookie.status === 401);
+  ok('GET /api/routes without cookie returns 401', noCookie.status === 401, noCookie.status);
 
   r = await req('GET', '/api/routes');
   ok('GET /api/routes', r.status === 200 && Array.isArray(r.json?.routes), r.status);
@@ -53,23 +51,44 @@ async function main() {
   r = await req('GET', '/api/review/summary');
   ok('GET /api/review/summary', r.status === 200 && Array.isArray(r.json?.summary), r.status);
 
-  r = await req('POST', '/api/routes', { route_id: 88888, route_name: 'E2E Test Route' });
+  const e2eRouteId = 'e2e-' + Date.now();
+  r = await req('POST', '/api/routes', { route_id: e2eRouteId, route_name: 'E2E Test Route' });
   ok('POST /api/routes (create)', r.status === 200 || r.status === 201, r.status);
   const routeCreated = r.status === 200 || r.status === 201;
 
-  r = await req('GET', '/api/subsections?route_id=88888');
+  r = await req('GET', '/api/subsections?route_id=' + e2eRouteId);
   ok('GET /api/subsections', r.status === 200 && Array.isArray(r.json?.subsections), r.status);
 
   if (routeCreated) {
-    r = await req('POST', '/api/subsections', { route_id: 88888, subsection_id: 1, subsection_name: 'E2E Subsection' });
+    r = await req('POST', '/api/subsections', { route_id: e2eRouteId, subsection_id: 1, subsection_name: 'E2E Subsection' });
     ok('POST /api/subsections', r.status === 200 || r.status === 201, r.status);
   }
 
-  r = await req('GET', '/api/photos?routeId=88888&subsectionId=1&limit=10');
+  r = await req('GET', '/api/photos?routeId=' + e2eRouteId + '&subsectionId=1&limit=10');
   ok('GET /api/photos', r.status === 200 && Array.isArray(r.json?.photos), r.status);
 
   r = await req('GET', '/api/photos?routeId=1&subsectionId=1&limit=5');
   ok('GET /api/photos (params)', r.status === 200, r.status);
+
+  // Photo image proxy: need a real photo id (try any route first, then fallback to 1/1)
+  let photosList = (await req('GET', '/api/photos?limit=1')).json?.photos;
+  if (!Array.isArray(photosList) || !photosList[0]?.id) {
+    photosList = (await req('GET', '/api/photos?routeId=1&subsectionId=1&limit=1')).json?.photos;
+  }
+  const photoId = Array.isArray(photosList) && photosList[0]?.id != null ? photosList[0].id : null;
+  if (photoId != null) {
+    r = await fetch(BASE + '/api/photos/' + photoId + '/image', { headers: { Cookie: COOKIE } });
+    const ct = r.headers.get('content-type') || '';
+    const buf = await r.arrayBuffer();
+    ok('GET /api/photos/:id/image (with photo)', r.status === 200 && ct.startsWith('image/') && buf.byteLength > 0, `status=${r.status} contentType=${ct} size=${buf.byteLength}`);
+  } else {
+    // No photos in DB: test 404 for invalid id
+    r = await fetch(BASE + '/api/photos/99999999/image', { headers: { Cookie: COOKIE } });
+    ok('GET /api/photos/:id/image (404 for missing)', r.status === 404, r.status);
+  }
+  // Unauthorized image request
+  const imgNoCookie = await fetch(BASE + '/api/photos/1/image');
+  ok('GET /api/photos/:id/image without cookie returns 401', imgNoCookie.status === 401, imgNoCookie.status);
 
   console.log('');
   if (failed > 0) {

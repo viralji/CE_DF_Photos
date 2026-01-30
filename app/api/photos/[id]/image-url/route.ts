@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionOrDevBypass } from '@/lib/auth-helpers';
 import { query } from '@/lib/db';
-import { getObjectFromS3 } from '@/lib/s3';
+import { getSignedUrlForS3 } from '@/lib/s3';
 
+/**
+ * Returns a short-lived presigned S3 URL so the client can load the image
+ * directly from S3 (avoids cookie/auth issues with proxy image request).
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -22,17 +26,10 @@ export async function GET(
     if (!row?.s3_key) {
       return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
     }
-    const { body, contentType } = await getObjectFromS3(row.s3_key);
-    const ct = contentType ?? 'image/jpeg';
-    return new NextResponse(new Uint8Array(body), {
-      status: 200,
-      headers: {
-        'Content-Type': ct,
-        'Cache-Control': 'private, max-age=86400, stale-while-revalidate=3600',
-      },
-    });
+    const url = await getSignedUrlForS3(row.s3_key, 3600);
+    return NextResponse.json({ url });
   } catch (error: unknown) {
-    console.error('Photo image proxy error:', error);
+    console.error('Photo image-url error:', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

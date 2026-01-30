@@ -19,26 +19,51 @@ async function getPhotosByRoute(routeId: string) {
   return res.json();
 }
 
+function distSq(
+  a: { latitude?: number | null; longitude?: number | null },
+  b: { latitude?: number | null; longitude?: number | null }
+): number {
+  const dlat = (b.latitude ?? 0) - (a.latitude ?? 0);
+  const dlon = (b.longitude ?? 0) - (a.longitude ?? 0);
+  return dlat * dlat + dlon * dlon;
+}
+
+/**
+ * Order points so the line follows geographic proximity: start from one "end"
+ * of the chain (one of the two farthest points), then always go to nearest
+ * unvisited point. This avoids crossing lines from an arbitrary start.
+ */
 function orderPhotosByNearestNeighbor<T extends { latitude?: number | null; longitude?: number | null }>(photos: T[]): T[] {
   if (photos.length <= 1) return [...photos];
-  const result: T[] = [];
+  if (photos.length === 2) return [...photos];
+
+  let maxDistSq = -1;
+  let startIdx = 0;
+  let endIdx = 0;
+  for (let i = 0; i < photos.length; i++) {
+    for (let j = i + 1; j < photos.length; j++) {
+      const d = distSq(photos[i], photos[j]);
+      if (d > maxDistSq) {
+        maxDistSq = d;
+        startIdx = i;
+        endIdx = j;
+      }
+    }
+  }
+
+  const result: T[] = [photos[startIdx]];
   const indices = new Set(photos.map((_, i) => i));
-  let currentIdx = 0;
-  result.push(photos[0]);
-  indices.delete(0);
+  indices.delete(startIdx);
+  let currentIdx = startIdx;
+
   while (indices.size > 0) {
     let nearestIdx = -1;
     let nearestDistSq = Infinity;
     const current = photos[currentIdx];
-    const clat = current.latitude ?? 0;
-    const clon = current.longitude ?? 0;
     for (const idx of indices) {
-      const p = photos[idx];
-      const dlat = (p.latitude ?? 0) - clat;
-      const dlon = (p.longitude ?? 0) - clon;
-      const distSq = dlat * dlat + dlon * dlon;
-      if (distSq < nearestDistSq) {
-        nearestDistSq = distSq;
+      const d = distSq(current, photos[idx]);
+      if (d < nearestDistSq) {
+        nearestDistSq = d;
         nearestIdx = idx;
       }
     }

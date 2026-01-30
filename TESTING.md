@@ -39,7 +39,7 @@ npm run start
 # Or with standalone: node .next/standalone/server.js
 ```
 
-Server runs at http://localhost:3000 (or PORT if set).
+Server runs at http://localhost:3001 (or PORT if set).
 
 ## 4. Dev bypass for API testing
 
@@ -58,7 +58,7 @@ With the server running and dev-bypass cookie set:
 **Shell (curl):**
 ```bash
 npm run test:api
-# Or: bash scripts/test-api.sh http://127.0.0.1:3000
+# Or: bash scripts/test-api.sh http://127.0.0.1:3001
 ```
 
 **Node (fetch) – full flow:**
@@ -67,7 +67,7 @@ npm run test:api:full
 # Or: node scripts/test-api-full.mjs http://127.0.0.1:3000
 ```
 
-Checks: GET /, GET/POST /api/routes, GET /api/checkpoints, /api/entities, /api/photos, /api/review/summary, GET/POST /api/subsections, 401 without cookie.
+Checks: GET /, GET/POST /api/routes, GET /api/checkpoints, /api/entities, /api/photos, /api/review/summary, GET/POST /api/subsections, GET /api/photos/[id]/image (200 + image), 401 without cookie.
 
 ## 6. Manual end-to-end checklist
 
@@ -107,7 +107,7 @@ Checks: GET /, GET/POST /api/routes, GET /api/checkpoints, /api/entities, /api/p
 - [ ] `/map` loads, map renders
 - [ ] Select route → photos with lat/long show as markers
 - [ ] Marker popup: thumbnail and “View full size” link
-- [ ] Route line (nearest-neighbor) displays
+- [ ] Route line (nearest-neighbor from endpoints) displays without crossing
 
 ### Admin
 
@@ -124,7 +124,7 @@ Checks: GET /, GET/POST /api/routes, GET /api/checkpoints, /api/entities, /api/p
 
 ### View photo
 
-- [ ] `/view-photo/[id]` loads full-size image with geo overlay
+- [ ] `/view-photo/[id]` loads full-size image (geo/location/IST burned at capture)
 
 ### API (with dev bypass)
 

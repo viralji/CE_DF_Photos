@@ -4,6 +4,12 @@ import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react
 
 export type GeoCoords = { latitude: number; longitude: number; accuracy?: number } | null;
 
+const GEO_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  timeout: 20000,
+  maximumAge: 0,
+};
+
 type Props = {
   onCapture: (file: File, geo: GeoCoords) => void;
   onCancel: () => void;
@@ -15,9 +21,12 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const bestPositionRef = useRef<{ latitude: number; longitude: number; accuracy?: number; at: number } | null>(null);
   const [error, setError] = useState('');
   const [mode, setMode] = useState<'choice' | 'live'>('choice');
   const [capturing, setCapturing] = useState(false);
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'getting' | 'ready' | 'poor'>('idle');
 
   const getGeo = useCallback((): Promise<GeoCoords> => {
     return new Promise((resolve) => {
@@ -33,7 +42,7 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
             accuracy: pos.coords.accuracy ?? undefined,
           }),
         () => resolve(null),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        GEO_OPTIONS
       );
     });
   }, []);
@@ -48,6 +57,37 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
   useEffect(() => {
     return () => stopStream();
   }, [stopStream]);
+
+  useEffect(() => {
+    if (mode !== 'live' || !navigator.geolocation) return;
+    bestPositionRef.current = null;
+    setGeoStatus('getting');
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const accuracy = pos.coords.accuracy ?? Infinity;
+        const prev = bestPositionRef.current;
+        if (prev == null || (prev.accuracy != null && accuracy < prev.accuracy)) {
+          bestPositionRef.current = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy ?? undefined,
+            at: Date.now(),
+          };
+          setGeoStatus(accuracy <= 50 ? 'ready' : 'poor');
+        }
+      },
+      () => setGeoStatus('poor'),
+      GEO_OPTIONS
+    );
+    return () => {
+      if (watchIdRef.current != null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      bestPositionRef.current = null;
+      setGeoStatus('idle');
+    };
+  }, [mode]);
 
   useLayoutEffect(() => {
     if (mode !== 'live' || !streamRef.current) return;
@@ -103,6 +143,17 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
     if (!video || !streamRef.current || capturing) return;
     setCapturing(true);
     try {
+      let geo: GeoCoords = null;
+      const best = bestPositionRef.current;
+      const ageMs = best ? Date.now() - best.at : Infinity;
+      if (best && ageMs < 5000) {
+        geo = { latitude: best.latitude, longitude: best.longitude, accuracy: best.accuracy };
+      } else {
+        if (navigator.geolocation) {
+          geo = await getGeo();
+        }
+      }
+
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -124,7 +175,6 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
       const file = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
       stopStream();
       setMode('choice');
-      const geo = await getGeo();
       onCapture(file, geo);
     } catch (e) {
       setError('Capture failed.');
@@ -164,6 +214,15 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
           {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
         </div>
         <div className="flex-shrink-0 p-4 bg-black/80 flex flex-col gap-2">
+          {geoStatus === 'ready' && bestPositionRef.current?.accuracy != null && (
+            <p className="text-xs text-green-400 text-center">GPS ±{Math.round(bestPositionRef.current.accuracy)} m</p>
+          )}
+          {geoStatus === 'poor' && (
+            <p className="text-xs text-amber-400 text-center">Move to open sky for better GPS accuracy</p>
+          )}
+          {geoStatus === 'getting' && (
+            <p className="text-xs text-slate-400 text-center">Getting location…</p>
+          )}
           <button
             type="button"
             onClick={captureFromLive}
