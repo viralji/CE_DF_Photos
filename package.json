@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start -p 3001",
+    "start": "next start",
     "lint": "eslint",
     "test": "npm run build",
     "test:db": "node scripts/test-db.mjs",
@@ -16,6 +16,7 @@
     "db:migrate": "node scripts/migrate-entities-and-subsection-emails.mjs",
     "db:migrate:execution-stage": "node scripts/migrate-execution-stage.mjs",
     "db:seed-entities-checkpoints": "node scripts/run-create-entity-checkpoints.mjs",
+    "db:fix-schema": "node scripts/fix-entities-checkpoints-schema.mjs",
     "db:generate-entity-checkpoints-sql": "node scripts/generate-entity-checkpoints-sql.mjs",
     "push": "git push -u origin main"
   },

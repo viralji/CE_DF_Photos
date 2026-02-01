@@ -141,7 +141,7 @@ try {
 
   const insertCheckpoint = db.prepare(`
     INSERT INTO checkpoints_new (entity_id, checkpoint_name, code, display_order, evidence_type, description, execution_stage, execution_before, execution_ongoing, execution_after, photo_type, doc_type, frequency, specs, photo_spec_1, photo_spec_2, photo_spec_3, photo_spec_4, created_at, updated_at)
-    VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const row of checkpointRows) {
@@ -157,6 +157,7 @@ try {
       entityId,
       row.checkpoint_name,
       code,
+      0,
       row.evidence_type || 'Photo',
       row.description ?? null,
       execution_stage,

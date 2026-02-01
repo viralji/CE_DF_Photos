@@ -19,7 +19,7 @@ Photo capture and review system for fiber optic installation quality control. Mo
 | **Admin** | User and role management (Engineer, Reviewer, Admin); subsection access. |
 | **Auth** | NextAuth with Azure AD; for local testing use cookie **dev-bypass-auth** = **true**. |
 
-**Scripts and DB:** See [docs/scripts-reference.md](docs/scripts-reference.md) for required vs optional scripts and migrations.
+**DB and deployment:** See [docs/migration-and-deployment.md](docs/migration-and-deployment.md) for database setup, migrations, seed data, and server deployment. See [docs/scripts-reference.md](docs/scripts-reference.md) for all scripts.
 
 ## Quick start
 
@@ -33,17 +33,7 @@ npm run dev
 
 Open **http://localhost:3001**. For local testing without Azure AD, set cookie **dev-bypass-auth** = **true** (DevTools → Application → Cookies). Ensure `NEXTAUTH_URL=http://localhost:3001` in `.env` when using port 3001.
 
-### Restoring entities and checkpoints
-
-If routes/entities/checkpoints are missing after a migration or fresh DB:
-
-1. `npm run db:migrate` (if you had the old schema with `checkpoints.entity` text column)
-2. `npm run db:migrate:execution-stage` (adds `execution_stage` to checkpoints)
-3. `npm run db:seed-entities-checkpoints` (runs `scripts/create_entity_checkpoints.sql` to seed entities/checkpoints)
-
-To regenerate the SQL from JSON: `npm run db:generate-entity-checkpoints-sql` (reads `checkpoints_data.json`).
-
-**Scripts folder:** See [docs/scripts-reference.md](docs/scripts-reference.md) for which scripts are required vs optional.
+If entities/checkpoints are missing or seed fails, see [Migration and deployment](docs/migration-and-deployment.md) (first-time setup, old DB migrations, `db:fix-schema`).
 
 ---
 
@@ -62,13 +52,8 @@ For API tests without Azure AD, set cookie **dev-bypass-auth** = **true** on loc
 
 ---
 
-## Deployment (Digital Ocean)
+## Deployment
 
-- **Prerequisites:** Ubuntu 22.04, Node.js 20+, PM2, optional Nginx + Certbot.
-- **Deploy:** Clone repo → `npm ci && npm run build` → create `.env` (NEXTAUTH_*, AZURE_AD_*, AWS_*, DATABASE_PATH) → `mkdir -p data && npm run db:setup && npm run db:seed-entities-checkpoints` → `pm2 start ecosystem.config.js` → `pm2 save && pm2 startup`.
-- **Nginx:** Reverse proxy to `http://127.0.0.1:3001`; set `NEXTAUTH_URL` to your domain; `certbot --nginx -d your-domain.com`.
-- **Verify:** `pm2 status` / `pm2 logs ce-df-photos`; `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3001/` (200 or 307); optional `./scripts/verify-server.sh https://your-domain.com` or `node scripts/test-api-full.mjs https://your-domain.com`.
+**Full instructions:** [docs/migration-and-deployment.md](docs/migration-and-deployment.md) — first-time server setup, PORT (3001 vs 13001 behind Nginx), DB setup/seed, deploy script, Nginx, and troubleshooting.
 
-**Troubleshooting:** App crashes → `pm2 logs`; port in use → change PORT in `.env`/ecosystem; DB errors → ensure `data/` writable, re-run `db:setup`; auth loop → `NEXTAUTH_URL` must match URL (no trailing slash); 502 → app not on 3001, reload Nginx after fixing app.
-
-**Push:** Remote `origin` → your git URL; then `git push -u origin main`.
+**Short:** First time: clone → `npm ci && npm run build` → `.env` (NEXTAUTH_*, AZURE_AD_*, AWS_*, DATABASE_PATH, **PORT=13001** if Nginx proxies to 13001) → `mkdir -p data && npm run db:setup && npm run db:seed-entities-checkpoints` → `pm2 start ecosystem.config.js --name ce-df-photos` → `pm2 save && pm2 startup`. Subsequent deploys: `./scripts/deploy-and-verify-on-server.sh` (uses APP_PORT=13001 for health check; set APP_PORT=3001 if your app listens on 3001).
