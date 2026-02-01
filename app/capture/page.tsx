@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { CameraCapture } from '@/components/camera/CameraCapture';
 import { uniqueCheckpointCodes, uniqueEntityCodes } from '@/lib/photo-filename';
+
+const STAGE_MAP: Record<string, string> = { Before: 'B', Ongoing: 'O', After: 'A' };
 
 async function getRoutes() {
   const res = await fetch('/api/routes');
@@ -32,15 +34,24 @@ async function getCheckpoints() {
   return res.json();
 }
 
+async function getComments(photoId: number) {
+  const res = await fetch(`/api/photos/${photoId}/comments`);
+  if (!res.ok) throw new Error('Failed to fetch comments');
+  return res.json();
+}
+
 type RequiredRow = { checkpointId: number; checkpointName: string; entity: string; stage: string; photoTypeNumber: number };
 
 export default function CapturePage() {
   const [routeId, setRouteId] = useState<string | ''>('');
   const [subsectionId, setSubsectionId] = useState<string | ''>('');
-  const [entity, setEntity] = useState<string | ''>('');
   const [message, setMessage] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const [locationStatus, setLocationStatus] = useState<'pending' | 'granted' | 'denied'>('pending');
   const [cameraForRow, setCameraForRow] = useState<RequiredRow | null>(null);
+  const [extraSlotsByKey, setExtraSlotsByKey] = useState<Record<string, number>>({});
+  const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [viewingPhoto, setViewingPhoto] = useState<{
     id: number;
     imageUrl: string;
@@ -49,8 +60,14 @@ export default function CapturePage() {
     locationAccuracy?: number | null;
     createdAt?: string | null;
   } | null>(null);
+  const [commentModalPhotoId, setCommentModalPhotoId] = useState<number | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [resubmitPhotoId, setResubmitPhotoId] = useState<number | null>(null);
+  const [resubmitCommentModal, setResubmitCommentModal] = useState<{ photoId: number; row: RequiredRow } | null>(null);
+  const [resubmitCommentInput, setResubmitCommentInput] = useState('');
+  const [resubmitCommentToSend, setResubmitCommentToSend] = useState('');
 
-  const queryClient = useQueryClient();
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
   const { data: subsectionsData } = useQuery({
     queryKey: ['subsections', routeId],
@@ -64,6 +81,12 @@ export default function CapturePage() {
     enabled: hasSelection,
   });
   const { data: checkpointsData } = useQuery({ queryKey: ['checkpoints'], queryFn: getCheckpoints });
+  const { data: commentsData, refetch: refetchComments } = useQuery({
+    queryKey: ['photo-comments', commentModalPhotoId],
+    queryFn: () => getComments(commentModalPhotoId!),
+    enabled: !!commentModalPhotoId,
+  });
+  const comments = (commentsData?.comments ?? []) as { id: number; author_email: string; author_name: string | null; created_at: string; comment_text: string }[];
 
   const routes = (routesData?.routes ?? []) as { route_id: string; route_name?: string }[];
   const subsections = (subsectionsData?.subsections ?? []) as { subsection_id: string; subsection_name?: string }[];
@@ -83,39 +106,75 @@ export default function CapturePage() {
     id: number;
     entity: string;
     checkpoint_name: string;
-    execution_before: number;
-    execution_ongoing: number;
-    execution_after: number;
+    execution_stage?: string | null;
     photo_type?: number;
   }[];
 
   const checkpointCodeMap = useMemo(() => uniqueCheckpointCodes(checkpoints.map((c) => ({ id: c.id, checkpoint_name: c.checkpoint_name }))), [checkpoints]);
   const entityCodeMap = useMemo(() => uniqueEntityCodes(checkpoints.map((c) => ({ entity: c.entity || '' }))), [checkpoints]);
 
-  const requiredRows: RequiredRow[] = [];
-  checkpoints.forEach((c) => {
-    const stages = [
-      ...(c.execution_before ? ['Before'] : []),
-      ...(c.execution_ongoing ? ['Ongoing'] : []),
-      ...(c.execution_after ? ['After'] : []),
-    ];
-    const photoSlots = Math.max(1, c.photo_type ?? 1);
-    stages.forEach((stage) => {
+  const requiredRows = useMemo(() => {
+    const rows: RequiredRow[] = [];
+    checkpoints.forEach((c) => {
+      const stage = (c.execution_stage === 'Before' || c.execution_stage === 'Ongoing' || c.execution_stage === 'After') ? c.execution_stage : 'Ongoing';
+      const photoSlots = Math.max(1, c.photo_type ?? 1);
       for (let i = 1; i <= photoSlots; i++) {
-        requiredRows.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', stage, photoTypeNumber: i });
+        rows.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', stage, photoTypeNumber: i });
       }
     });
-  });
+    return rows;
+  }, [checkpoints]);
 
-  const rowsByEntity = (() => {
+  const maxPhotoTypeByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    photos.forEach((p) => {
+      const stageDisplay = p.execution_stage === 'B' ? 'Before' : p.execution_stage === 'O' ? 'Ongoing' : p.execution_stage === 'A' ? 'After' : 'Ongoing';
+      const key = `${p.checkpoint_id}-${stageDisplay}`;
+      const current = map.get(key) ?? 0;
+      map.set(key, Math.max(current, p.photo_type_number));
+    });
+    return map;
+  }, [photos]);
+
+  const allRows = useMemo(() => {
+    const extra: RequiredRow[] = [];
+    checkpoints.forEach((c) => {
+      const stage = (c.execution_stage === 'Before' || c.execution_stage === 'Ongoing' || c.execution_stage === 'After') ? c.execution_stage : 'Ongoing';
+      const key = `${c.id}-${stage}`;
+      const N = Math.max(1, c.photo_type ?? 1);
+      const maxFromPhotos = maxPhotoTypeByKey.get(key) ?? 0;
+      const existingExtra = Math.max(0, maxFromPhotos - N);
+      const emptyExtra = extraSlotsByKey[key] ?? 0;
+      const extraCount = Math.max(existingExtra, emptyExtra);
+      for (let i = 1; i <= extraCount; i++) {
+        extra.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', stage, photoTypeNumber: N + i });
+      }
+    });
+    const combined = [...requiredRows, ...extra];
+    const entityOrder = [...new Set(requiredRows.map((r) => r.entity))];
+    combined.sort((a, b) => {
+      const ai = entityOrder.indexOf(a.entity);
+      const bi = entityOrder.indexOf(b.entity);
+      if (ai !== bi) return ai - bi;
+      if (a.checkpointId !== b.checkpointId) return a.checkpointId - b.checkpointId;
+      return a.photoTypeNumber - b.photoTypeNumber;
+    });
+    return combined;
+  }, [requiredRows, checkpoints, maxPhotoTypeByKey, extraSlotsByKey]);
+
+  const rowsByEntity = useMemo(() => {
+    const order: string[] = [];
     const map: Record<string, RequiredRow[]> = {};
-    requiredRows.forEach((row) => {
+    allRows.forEach((row) => {
       const e = row.entity || 'Other';
-      if (!map[e]) map[e] = [];
+      if (!map[e]) {
+        map[e] = [];
+        order.push(e);
+      }
       map[e].push(row);
     });
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
-  })();
+    return order.map((entity) => [entity, map[entity]] as [string, RequiredRow[]]);
+  }, [allRows]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -129,59 +188,132 @@ export default function CapturePage() {
     );
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (messageTimeoutRef.current != null) clearTimeout(messageTimeoutRef.current);
+    };
+  }, []);
+
   function getRowKey(row: RequiredRow) {
     return `${row.checkpointId}-${row.stage}-${row.photoTypeNumber}`;
   }
 
-  function openCamera(row: RequiredRow) {
+  function openCamera(row: RequiredRow, forResubmitPhotoId: number | null = null) {
+    setResubmitPhotoId(forResubmitPhotoId ?? null);
     setCameraForRow(row);
   }
 
   async function handleCaptureComplete(file: File, geo: { latitude: number; longitude: number; accuracy?: number } | null) {
     if (!cameraForRow || !routeId || !subsectionId) return;
-    const stageMap: Record<string, string> = { Before: 'B', Ongoing: 'O', After: 'A' };
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('routeId', routeId);
-    formData.append('subsectionId', subsectionId);
-    formData.append('checkpointId', String(cameraForRow.checkpointId));
-    formData.append('executionStage', stageMap[cameraForRow.stage] || 'O');
-    formData.append('photoTypeNumber', String(cameraForRow.photoTypeNumber));
-    formData.append('photoCategory', cameraForRow.entity || '');
-    if (geo) {
-      formData.append('latitude', String(geo.latitude));
-      formData.append('longitude', String(geo.longitude));
-      if (geo.accuracy != null) formData.append('locationAccuracy', String(geo.accuracy));
-    }
+    const row = cameraForRow;
+    const existingPhotoId = resubmitPhotoId;
+    const commentToSend = resubmitCommentToSend.trim();
+    setCameraForRow(null);
+    setResubmitPhotoId(null);
+    setResubmitCommentToSend('');
+    setUploadError('');
+    setIsUploading(true);
+    setMessage(existingPhotoId ? 'Resubmitting photo...' : 'Processing and uploading photo...');
+    await new Promise((r) => setTimeout(r, 200));
+    const startTime = Date.now();
     try {
-      const res = await fetch('/api/photos/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage(`Error: ${data.error || 'Upload failed'}`);
-        return;
+      if (existingPhotoId) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('comment', commentToSend);
+        const res = await fetch(`/api/photos/${existingPhotoId}/resubmit`, { method: 'POST', body: formData });
+        const text = await res.text();
+        let data: { error?: string } = {};
+        try { data = text ? JSON.parse(text) : {}; } catch { data = { error: 'Resubmit failed' }; }
+        if (!res.ok) {
+          setUploadError(typeof data?.error === 'string' ? data.error : 'Resubmit failed');
+          setMessage('');
+          return;
+        }
+        setMessage('Photo resubmitted successfully!');
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('fileSize', String(file.size));
+        formData.append('fileLastModified', String(file.lastModified));
+        formData.append('routeId', routeId);
+        formData.append('subsectionId', subsectionId);
+        formData.append('checkpointId', String(row.checkpointId));
+        formData.append('executionStage', STAGE_MAP[row.stage] || 'O');
+        formData.append('photoTypeNumber', String(row.photoTypeNumber));
+        formData.append('photoCategory', row.entity || '');
+        if (geo) {
+          formData.append('latitude', String(geo.latitude));
+          formData.append('longitude', String(geo.longitude));
+          if (geo.accuracy != null) formData.append('locationAccuracy', String(geo.accuracy));
+        }
+        const res = await fetch('/api/photos/upload', { method: 'POST', body: formData });
+        const text = await res.text();
+        let data: { error?: string } = {};
+        try { data = text ? JSON.parse(text) : {}; } catch { data = { error: 'Upload failed' }; }
+        if (!res.ok) {
+          setUploadError(typeof data?.error === 'string' ? data.error : 'Upload failed');
+          setMessage('');
+          return;
+        }
+        setMessage('Photo uploaded successfully!');
       }
-      setMessage('Photo uploaded successfully!');
-      setTimeout(() => setMessage(''), 3000);
+      const elapsed = Date.now() - startTime;
+      const minWait = Math.max(0, 1500 - elapsed);
+      await new Promise((resolve) => setTimeout(resolve, minWait));
+      if (messageTimeoutRef.current != null) clearTimeout(messageTimeoutRef.current);
+      messageTimeoutRef.current = setTimeout(() => { setMessage(''); messageTimeoutRef.current = null; }, 3000);
       refetchPhotos();
     } catch (error: unknown) {
-      setMessage(`Error uploading: ${(error as Error).message}`);
+      setUploadError((error as Error).message);
+      setMessage('');
     } finally {
-      setCameraForRow(null);
+      setIsUploading(false);
     }
   }
 
   function findPhotoForRow(row: RequiredRow) {
-    const stageMap: Record<string, string> = { Before: 'B', Ongoing: 'O', After: 'A' };
     return photos.find(
       (p) =>
         p.checkpoint_id === row.checkpointId &&
-        p.execution_stage === stageMap[row.stage] &&
+        p.execution_stage === STAGE_MAP[row.stage] &&
         p.photo_type_number === row.photoTypeNumber
     );
   }
 
+  async function handleAddComment() {
+    if (!commentModalPhotoId || !commentText.trim()) return;
+    setCommentSubmitting(true);
+    try {
+      const res = await fetch(`/api/photos/${commentModalPhotoId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: commentText.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setUploadError(typeof data?.error === 'string' ? data.error : 'Failed to add comment');
+        return;
+      }
+      setCommentText('');
+      refetchComments();
+    } catch (e) {
+      setUploadError((e as Error).message);
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
+      {isUploading && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50" aria-live="polite">
+          <div className="bg-white rounded-xl shadow-2xl px-6 py-5 flex items-center gap-4 min-w-[240px]">
+            <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
+            <span className="font-medium text-slate-800">Processing and uploading photo…</span>
+          </div>
+        </div>
+      )}
       <header className="flex-shrink-0 border-b border-slate-200 bg-white sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between min-h-[44px]">
           <div className="flex items-center gap-2 min-h-0">
@@ -209,11 +341,38 @@ export default function CapturePage() {
           </div>
         )}
 
-        {message && (
-          <div className="bg-blue-600 text-white px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+        {uploadError && (
+          <div
+            className="fixed top-4 left-4 right-4 z-[9999] bg-red-600 text-white px-4 py-3 rounded-lg text-sm flex items-center gap-2 shadow-lg"
+            role="alert"
+            key={uploadError}
+          >
             <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
+            <span className="font-medium flex-1 min-w-0">{uploadError}</span>
+            <button
+              type="button"
+              onClick={() => setUploadError('')}
+              className="p-1.5 rounded hover:bg-white/20 transition-colors flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {message && (
+          <div className="bg-blue-600 text-white px-4 py-3 rounded-lg text-sm flex items-center gap-2 relative z-[110]">
+            {isUploading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+            ) : (
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
             <span className="font-medium">{message}</span>
           </div>
         )}
@@ -242,45 +401,61 @@ export default function CapturePage() {
           </div>
         </div>
 
-        {hasSelection && requiredRows.length > 0 && (
+        {hasSelection && allRows.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-lg">
             <div className="px-3 py-1 border-b border-slate-200 flex items-center justify-between bg-slate-50 rounded-t-lg">
               <h2 className="font-semibold text-slate-800 text-xs">Required Photos</h2>
-              <span className="text-slate-500 text-xs">{photos.length} / {requiredRows.length}</span>
+              <span className="text-slate-500 text-xs">{photos.length} / {allRows.length}</span>
             </div>
             <div className="divide-y divide-slate-100">
-              {rowsByEntity.map(([entityName, rows]) => (
+              {rowsByEntity.map(([entityName, rows]) => {
+                const byCheckpointKey = new Map<string, RequiredRow[]>();
+                const keyOrder: string[] = [];
+                rows.forEach((row) => {
+                  const key = `${row.checkpointId}-${row.stage}`;
+                  if (!byCheckpointKey.has(key)) {
+                    byCheckpointKey.set(key, []);
+                    keyOrder.push(key);
+                  }
+                  byCheckpointKey.get(key)!.push(row);
+                });
+                return (
                 <div key={entityName} className="relative">
                   <div className="sticky top-14 z-20 px-3 py-1 leading-tight bg-blue-50 border-b border-blue-100 text-blue-800 font-semibold text-xs uppercase tracking-wide flex items-center gap-2">
                     <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded">{entityCodeMap.get(entityName || 'Other') ?? '—'}</span>
                     {entityName}
                   </div>
                   <div className="pt-0.5">
-                  {rows.map((row) => {
+                  {keyOrder.map((groupKey) => (
+                    <div key={groupKey} className="relative">
+                  {(byCheckpointKey.get(groupKey) ?? []).map((row, idx) => {
+                    const groupRows = byCheckpointKey.get(groupKey) ?? [];
+                    const isLastInGroup = idx === groupRows.length - 1;
                     const photo = findPhotoForRow(row);
                     const hasPhoto = !!photo;
-                    const isRejected = photo?.status === 'rejected';
+                    const needsAttention = photo?.status === 'qc_required' || photo?.status === 'nc';
+                    const statusLabel = photo?.status === 'qc_required' ? 'QC Required' : photo?.status === 'nc' ? 'NC' : null;
                     return (
                       <div
                         key={getRowKey(row)}
                         className={`flex items-center gap-3 pl-3 pr-4 py-2 min-h-0 border-l-2 transition-colors ${
-                          hasPhoto && !isRejected
+                          hasPhoto && !needsAttention
                             ? 'bg-green-50 border-l-green-400'
-                            : isRejected
-                            ? 'bg-red-50 border-l-red-400'
+                            : needsAttention
+                            ? 'bg-amber-50 border-l-amber-400'
                             : 'bg-white border-l-slate-200 hover:bg-slate-50'
                         }`}
                       >
                         <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-                          hasPhoto && !isRejected ? 'bg-green-500' : isRejected ? 'bg-red-500' : 'bg-slate-300'
+                          hasPhoto && !needsAttention ? 'bg-green-500' : needsAttention ? 'bg-amber-500' : 'bg-slate-300'
                         }`}>
-                          {hasPhoto && !isRejected ? (
+                          {hasPhoto && !needsAttention ? (
                             <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                          ) : isRejected ? (
+                          ) : needsAttention ? (
                             <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
                           ) : (
                             <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -300,7 +475,7 @@ export default function CapturePage() {
                             {row.stage}
                             {row.photoTypeNumber > 1 ? ` #${row.photoTypeNumber}` : ''}
                           </span>
-                          {isRejected && <span className="text-red-600 text-[10px] font-medium">Rejected</span>}
+                          {statusLabel && <span className="text-amber-700 text-[10px] font-medium">{statusLabel}</span>}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {hasPhoto && (
@@ -315,14 +490,25 @@ export default function CapturePage() {
                               </svg>
                             </button>
                           )}
+                          {needsAttention && (
+                            <button
+                              onClick={() => setCommentModalPhotoId(photo.id)}
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                              title="View comments"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              </svg>
+                            </button>
+                          )}
                           <button
-                            onClick={() => openCamera(row)}
-                            disabled={locationStatus !== 'granted' || (hasPhoto && !isRejected)}
-                            title={hasPhoto && !isRejected ? 'Done' : isRejected ? 'Retake' : 'Capture'}
+                            onClick={() => (needsAttention ? setResubmitCommentModal({ photoId: photo.id, row }) : openCamera(row, null))}
+                            disabled={locationStatus !== 'granted' || (hasPhoto && !needsAttention)}
+                            title={hasPhoto && !needsAttention ? 'Done' : needsAttention ? 'Retake' : 'Capture'}
                             className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-md transition-colors ${
-                              hasPhoto && !isRejected
+                              hasPhoto && !needsAttention
                                 ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                : isRejected
+                                : needsAttention
                                 ? 'bg-amber-500 text-white hover:bg-amber-600'
                                 : 'bg-blue-600 text-white hover:bg-blue-700'
                             }`}
@@ -332,18 +518,34 @@ export default function CapturePage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                           </button>
+                          {isLastInGroup && (
+                            <button
+                              type="button"
+                              onClick={() => setExtraSlotsByKey((prev) => ({ ...prev, [groupKey]: (prev[groupKey] ?? 0) + 1 }))}
+                              className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded text-blue-600 hover:bg-blue-50 transition-colors"
+                              title="Add another photo for this checkpoint"
+                              aria-label="Add photo"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
                   })}
+                </div>
+                  ))}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
-        {hasSelection && requiredRows.length === 0 && (
+        {hasSelection && allRows.length === 0 && (
           <div className="bg-white border border-slate-200 rounded-lg p-8 text-center">
             <svg className="w-12 h-12 mx-auto text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -357,7 +559,11 @@ export default function CapturePage() {
       {cameraForRow && (
         <CameraCapture
           onCapture={handleCaptureComplete}
-          onCancel={() => setCameraForRow(null)}
+          onCancel={() => {
+            setCameraForRow(null);
+            setResubmitPhotoId(null);
+            setResubmitCommentToSend('');
+          }}
           disabled={locationStatus !== 'granted'}
         />
       )}
@@ -381,6 +587,106 @@ export default function CapturePage() {
                 className="px-3 py-1.5 bg-white/90 hover:bg-white text-slate-800 text-sm font-medium rounded"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comment modal for QC Required / NC photos */}
+      {commentModalPhotoId != null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={() => { setCommentModalPhotoId(null); setCommentText(''); }}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900">Comments</h3>
+              <button
+                type="button"
+                onClick={() => { setCommentModalPhotoId(null); setCommentText(''); }}
+                className="p-1.5 text-slate-500 hover:bg-slate-100 rounded"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {comments.length === 0 ? (
+                <p className="text-slate-500 text-sm">No comments yet.</p>
+              ) : (
+                comments.map((c) => (
+                  <div key={c.id} className="text-sm border-l-2 border-slate-200 pl-3 py-1">
+                    <p className="text-slate-700">{c.comment_text}</p>
+                    <p className="text-xs text-slate-500 mt-1">{c.author_name || c.author_email} · {new Date(c.created_at).toLocaleString()}</p>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-200">
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Add a comment..."
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                rows={2}
+              />
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => { setCommentModalPhotoId(null); setCommentText(''); }}
+                  className="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg text-sm"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddComment}
+                  disabled={!commentText.trim() || commentSubmitting}
+                  className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {commentSubmitting ? 'Sending…' : 'Add comment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comment required before resubmitting (QC/NC retake) */}
+      {resubmitCommentModal != null && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4" onClick={() => { setResubmitCommentModal(null); setResubmitCommentInput(''); }}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-slate-900 mb-2">Comment required before resubmitting</h3>
+            <p className="text-sm text-slate-600 mb-3">Add a comment for the reviewer before taking a new photo.</p>
+            <textarea
+              value={resubmitCommentInput}
+              onChange={(e) => setResubmitCommentInput(e.target.value)}
+              placeholder="Enter comment..."
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              rows={3}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => { setResubmitCommentModal(null); setResubmitCommentInput(''); }}
+                className="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const trimmed = resubmitCommentInput.trim();
+                  if (!trimmed) return;
+                  setResubmitCommentToSend(trimmed);
+                  setResubmitPhotoId(resubmitCommentModal.photoId);
+                  setCameraForRow(resubmitCommentModal.row);
+                  setResubmitCommentModal(null);
+                  setResubmitCommentInput('');
+                }}
+                disabled={!resubmitCommentInput.trim()}
+                className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continue to camera
               </button>
             </div>
           </div>

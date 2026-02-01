@@ -50,6 +50,8 @@ async function main() {
 
   r = await req('GET', '/api/review/summary');
   ok('GET /api/review/summary', r.status === 200 && Array.isArray(r.json?.summary), r.status);
+  const firstSummary = r.json?.summary?.[0];
+  ok('Review summary has qc_required_count/nc_count', firstSummary == null || (typeof firstSummary?.qc_required_count !== 'undefined' && typeof firstSummary?.nc_count !== 'undefined'), '');
 
   const e2eRouteId = 'e2e-' + Date.now();
   r = await req('POST', '/api/routes', { route_id: e2eRouteId, route_name: 'E2E Test Route' });
@@ -89,6 +91,39 @@ async function main() {
   // Unauthorized image request
   const imgNoCookie = await fetch(BASE + '/api/photos/1/image');
   ok('GET /api/photos/:id/image without cookie returns 401', imgNoCookie.status === 401, imgNoCookie.status);
+
+  // Single photo with comments
+  if (photoId != null) {
+    r = await req('GET', '/api/photos/' + photoId);
+    ok('GET /api/photos/:id returns photo with comments', r.status === 200 && r.json?.id === photoId && Array.isArray(r.json?.comments), r.status);
+    r = await req('GET', '/api/photos/' + photoId + '/comments');
+    ok('GET /api/photos/:id/comments', r.status === 200 && Array.isArray(r.json?.comments), r.status);
+    r = await req('POST', '/api/photos/' + photoId + '/comments', { text: 'E2E test comment ' + Date.now() });
+    ok('POST /api/photos/:id/comments', r.status === 201 && r.json?.comment_text != null, r.status);
+  }
+
+  // Approvals: qc_required and nc require comment
+  if (photoId != null) {
+    r = await req('POST', '/api/approvals', { photoId, action: 'qc_required' });
+    ok('POST /api/approvals qc_required without comment returns 400', r.status === 400, r.status);
+    r = await req('POST', '/api/approvals', { photoId, action: 'qc_required', comment: 'E2E QC comment' });
+    ok('POST /api/approvals qc_required with comment', r.status === 200 && r.json?.success === true, r.status);
+    // Resubmit: missing file returns 400
+    r = await req('POST', '/api/photos/' + photoId + '/resubmit', new FormData());
+    ok('POST /api/photos/:id/resubmit without file returns 400', r.status === 400, r.status);
+  }
+
+  // Approvals: nc with comment (use a different photo if we have one, else skip)
+  let photoId2 = null;
+  const photosList2 = (await req('GET', '/api/photos?limit=5')).json?.photos;
+  if (Array.isArray(photosList2)) {
+    const other = photosList2.find((p) => p.id !== photoId && (p.status === 'pending' || p.status === 'approved'));
+    photoId2 = other?.id;
+  }
+  if (photoId2 != null) {
+    r = await req('POST', '/api/approvals', { photoId: photoId2, action: 'nc', comment: 'E2E NC comment' });
+    ok('POST /api/approvals nc with comment', r.status === 200 && r.json?.success === true, r.status);
+  }
 
   console.log('');
   if (failed > 0) {

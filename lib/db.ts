@@ -82,6 +82,90 @@ export function getDb(): Database.Database {
     } catch {
       // ignore
     }
+    // Duplicate photo check: add file fingerprint columns if missing
+    try {
+      const cols = db.prepare("PRAGMA table_info(photo_submissions)").all() as { name: string }[];
+      const names = new Set(cols.map((c) => c.name));
+      if (!names.has('file_original_size')) {
+        db.exec('ALTER TABLE photo_submissions ADD COLUMN file_original_size INTEGER');
+      }
+      if (!names.has('file_last_modified')) {
+        db.exec('ALTER TABLE photo_submissions ADD COLUMN file_last_modified INTEGER');
+      }
+      db.exec('CREATE INDEX IF NOT EXISTS idx_photo_submissions_file_fingerprint ON photo_submissions(file_original_size, file_last_modified)');
+    } catch {
+      // ignore
+    }
+    // subsection_allowed_emails: create if missing (e.g. DB created before this table existed)
+    try {
+      const hasSubsectionEmails = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='subsection_allowed_emails'").get();
+      if (!hasSubsectionEmails) {
+        db.exec(`
+          CREATE TABLE subsection_allowed_emails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route_id TEXT NOT NULL,
+            subsection_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(route_id, subsection_id, email)
+          )
+        `);
+      }
+    } catch {
+      // ignore
+    }
+    // photo_submission_comments: normalized comment history for QC/NC workflow
+    try {
+      const hasCommentsTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_submission_comments'").get();
+      if (!hasCommentsTable) {
+        db.exec(`
+          CREATE TABLE photo_submission_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            photo_submission_id INTEGER NOT NULL,
+            user_id INTEGER,
+            author_email TEXT NOT NULL,
+            author_name TEXT,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            comment_text TEXT NOT NULL,
+            FOREIGN KEY (photo_submission_id) REFERENCES photo_submissions(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+          )
+        `);
+        db.exec('CREATE INDEX IF NOT EXISTS idx_photo_submission_comments_photo ON photo_submission_comments(photo_submission_id)');
+        // Migrate existing review_comment into first comment row (once)
+        const withComment = db.prepare(
+          `SELECT ps.id, ps.review_comment, ps.reviewer_id, ps.reviewed_at FROM photo_submissions ps
+           WHERE ps.review_comment IS NOT NULL AND TRIM(ps.review_comment) != ''`
+        ).all() as { id: number; review_comment: string; reviewer_id: number | null; reviewed_at: string | null }[];
+        for (const row of withComment) {
+          const reviewer = row.reviewer_id
+            ? db.prepare('SELECT email, name FROM users WHERE id = ?').get(row.reviewer_id) as { email: string; name: string | null } | undefined
+            : null;
+          const authorEmail = reviewer?.email ?? 'unknown';
+          const authorName = reviewer?.name ?? null;
+          const createdAt = row.reviewed_at ?? new Date().toISOString();
+          try {
+            db.prepare(
+              'INSERT INTO photo_submission_comments (photo_submission_id, user_id, author_email, author_name, created_at, comment_text) VALUES (?, ?, ?, ?, ?, ?)'
+            ).run(row.id, row.reviewer_id, authorEmail, authorName, createdAt, row.review_comment);
+          } catch {
+            // ignore
+          }
+        }
+        db.prepare("UPDATE photo_submissions SET status = 'nc' WHERE status = 'rejected'").run();
+      } else {
+        // Table exists (e.g. new install); ensure no 'rejected' status remains
+        db.prepare("UPDATE photo_submissions SET status = 'nc' WHERE status = 'rejected'").run();
+      }
+    } catch {
+      // ignore
+    }
+    // Bootstrap first Admin
+    try {
+      db.prepare("UPDATE users SET role = 'Admin' WHERE email = 'v.shah@cloudextel.com'").run();
+    } catch {
+      // ignore
+    }
   }
   return db;
 }

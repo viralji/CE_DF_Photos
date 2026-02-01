@@ -29,7 +29,7 @@ try {
   console.log('✓ Routes:', routes.length);
   console.log('✓ Checkpoints:', checkpoints.length);
 } catch (e) {
-  console.warn('⚠ Tables missing? Run: npm run db:setup && npm run seed:checkpoints');
+  console.warn('⚠ Tables missing? Run: npm run db:setup && npm run db:seed-entities-checkpoints');
 }
 db.close();
 console.log('✓ DB smoke test passed');

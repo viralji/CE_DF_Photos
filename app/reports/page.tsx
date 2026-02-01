@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 async function getRoutes() {
   const res = await fetch('/api/routes');
@@ -17,16 +18,69 @@ async function getPhotos(routeId: string | null) {
   return res.json();
 }
 
+async function getRouteCompletion() {
+  const res = await fetch('/api/reports/route-completion');
+  if (!res.ok) throw new Error('Failed to fetch route completion');
+  return res.json();
+}
+
+type RouteCompletionRow = {
+  route_id: string;
+  route_name: string;
+  subsection_count: number;
+  expected_photos: number;
+  uploaded_photos: number;
+  percentage: number;
+};
+
+const BUCKETS = [
+  { key: '0-20', label: '0–20%', min: 0, max: 20, color: '#ef4444' },
+  { key: '21-40', label: '21–40%', min: 21, max: 40, color: '#f59e0b' },
+  { key: '41-60', label: '41–60%', min: 41, max: 60, color: '#eab308' },
+  { key: '61-80', label: '61–80%', min: 61, max: 80, color: '#22c55e' },
+  { key: '81-100', label: '81–100%', min: 81, max: 100, color: '#059669' },
+];
+
+function getBucketKey(pct: number): string {
+  if (pct <= 20) return '0-20';
+  if (pct <= 40) return '21-40';
+  if (pct <= 60) return '41-60';
+  if (pct <= 80) return '61-80';
+  return '81-100';
+}
+
 export default function ReportsPage() {
   const [selectedRoute, setSelectedRoute] = useState<string>('all');
+  const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
+  const { data: completionData } = useQuery({
+    queryKey: ['route-completion'],
+    queryFn: getRouteCompletion,
+  });
   const { data: photosData } = useQuery({
     queryKey: ['photos-report', selectedRoute],
     queryFn: () => getPhotos(selectedRoute === 'all' ? null : selectedRoute),
   });
 
   const routes = (routesData?.routes ?? []) as { route_id: string; route_name?: string }[];
+  const completionRows = (completionData?.routes ?? []) as RouteCompletionRow[];
+
+  const { pieData, routesByBucket } = useMemo(() => {
+    const byBucket: Record<string, RouteCompletionRow[]> = {};
+    BUCKETS.forEach((b) => { byBucket[b.key] = []; });
+    completionRows.forEach((row) => {
+      const key = getBucketKey(row.percentage);
+      byBucket[key].push(row);
+    });
+    const pieData = BUCKETS.map((b) => ({
+      name: b.label,
+      key: b.key,
+      count: byBucket[b.key].length,
+      color: b.color,
+    })).filter((d) => d.count > 0);
+    return { pieData, routesByBucket: byBucket };
+  }, [completionRows]);
   const photos = (photosData?.photos ?? []) as {
     id: number;
     route_name?: string;
@@ -68,6 +122,84 @@ export default function ReportsPage() {
       </header>
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-4 space-y-4 overflow-x-auto">
+        {/* Route completion pie chart */}
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h2 className="text-sm font-semibold text-slate-800 mb-1">Route completion</h2>
+          <p className="text-xs text-slate-500 mb-4">
+            Routes by % of expected photos uploaded. Click a slice to see routes in that range.
+          </p>
+          {completionRows.length === 0 ? (
+            <p className="text-sm text-slate-500">No routes or no checkpoints configured. Add routes and run checkpoint seed.</p>
+          ) : pieData.length === 0 ? (
+            <p className="text-sm text-slate-500">No route data to display.</p>
+          ) : (
+            <>
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="count"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={2}
+                      onClick={(data: { key: string }) => setSelectedBucket(data.key)}
+                      cursor="pointer"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={entry.key} fill={entry.color} stroke="#fff" strokeWidth={1} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number, _name: string, props: unknown) => {
+                        const p = props as { payload?: { name: string; count: number } };
+                        const count = p?.payload?.count ?? value;
+                        return [`${count} route${count !== 1 ? 's' : ''}`, p?.payload?.name ?? ''];
+                      }}
+                    />
+                    <Legend formatter={(value, entry) => `${value}: ${(entry as { payload?: { count: number } })?.payload?.count ?? 0} route(s)`} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              {selectedBucket && routesByBucket[selectedBucket] && (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-slate-700">
+                      Routes in {BUCKETS.find((b) => b.key === selectedBucket)?.label ?? selectedBucket}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBucket(null)}
+                      className="text-xs text-slate-500 hover:text-slate-700 underline"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <ul className="flex flex-wrap gap-2">
+                    {routesByBucket[selectedBucket].map((row) => (
+                      <li key={row.route_id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedRoute(row.route_id);
+                            setSelectedBucket(null);
+                          }}
+                          className="px-2 py-1 text-xs rounded bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        >
+                          {row.route_name} ({row.percentage}%)
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <div className="flex flex-col sm:flex-row sm:items-end gap-3">
             <div className="flex-1">

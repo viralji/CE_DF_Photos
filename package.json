@@ -12,8 +12,11 @@
     "test:api": "bash scripts/test-api.sh",
     "test:api:full": "node scripts/test-api-full.mjs http://127.0.0.1:3001",
     "test:init-db": "node scripts/init-db-full.mjs",
-    "seed:checkpoints": "tsx scripts/seed-checkpoints.ts",
     "db:setup": "tsx scripts/setup-db.ts",
+    "db:migrate": "node scripts/migrate-entities-and-subsection-emails.mjs",
+    "db:migrate:execution-stage": "node scripts/migrate-execution-stage.mjs",
+    "db:seed-entities-checkpoints": "node scripts/run-create-entity-checkpoints.mjs",
+    "db:generate-entity-checkpoints-sql": "node scripts/generate-entity-checkpoints-sql.mjs",
     "push": "git push -u origin main"
   },
   "dependencies": {
@@ -30,6 +33,7 @@
     "next-auth": "^4.24.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "recharts": "^2.15.4",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionOrDevBypass } from '@/lib/auth-helpers';
+import { getSessionWithRole } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
+import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSessionOrDevBypass(request);
+    const session = await getSessionWithRole(request);
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const allowedKeys = getAllowedSubsectionKeys(session.user.email, session.role);
+    if (allowedKeys.size === 0) {
+      return NextResponse.json({ subsections: [] });
+    }
     const routeId = request.nextUrl.searchParams.get('route_id');
-    let sql = 'SELECT * FROM subsections';
-    const params: unknown[] = [];
+    const keys = [...allowedKeys];
+    const conditions = keys.map(() => '(route_id = ? AND subsection_id = ?)').join(' OR ');
+    const params: unknown[] = keys.flatMap((k) => {
+      const [r, s] = k.split('::');
+      return [r, s];
+    });
+    let sql = `SELECT * FROM subsections WHERE (${conditions})`;
     if (routeId) {
-      sql += ' WHERE route_id = ?';
+      sql += ' AND route_id = ?';
       params.push(routeId);
     }
     sql += ' ORDER BY route_id, subsection_id';
@@ -26,9 +36,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSessionOrDevBypass(request);
+    const session = await getSessionWithRole(request);
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role !== 'Admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const body = await request.json();
     const { route_id, subsection_id, subsection_name } = body;

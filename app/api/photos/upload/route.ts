@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionOrDevBypass } from '@/lib/auth-helpers';
+import { getSessionWithRole } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
+import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 import { uploadToS3, getS3Key } from '@/lib/s3';
 import { compressImage, getImageMetadata, burnGeoOverlay } from '@/lib/image-compression';
 import { reverseGeocode, formatLocationForBurn } from '@/lib/geocode';
@@ -42,7 +43,7 @@ function buildPhotoFilename(params: {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSessionOrDevBypass(request);
+    const session = await getSessionWithRole(request);
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -71,8 +72,43 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const allowedKeys = getAllowedSubsectionKeys(session.user.email, session.role);
+    const subsectionKey = `${String(routeId)}::${String(subsectionId)}`;
+    if (!allowedKeys.has(subsectionKey)) {
+      return NextResponse.json(
+        { error: 'You do not have access to this route and subsection' },
+        { status: 403 }
+      );
+    }
     if (typeof file.size !== 'number' || file.size === 0) {
       return NextResponse.json({ error: 'File is empty.' }, { status: 400 });
+    }
+
+    const fileSizeRaw = formData.get('fileSize') as string | null;
+    const fileLastModifiedRaw = formData.get('fileLastModified') as string | null;
+    const fileOriginalSize = fileSizeRaw ? parseInt(fileSizeRaw, 10) : null;
+    const fileLastModified = fileLastModifiedRaw ? parseInt(fileLastModifiedRaw, 10) : null;
+    if (fileOriginalSize != null && !Number.isNaN(fileOriginalSize) && fileLastModified != null && !Number.isNaN(fileLastModified)) {
+      const dup = getDb()
+        .prepare(
+          `SELECT r.route_name, s.subsection_name, e.name AS entity_name, c.checkpoint_name
+           FROM photo_submissions ps
+           LEFT JOIN routes r ON ps.route_id = r.route_id
+           LEFT JOIN subsections s ON ps.route_id = s.route_id AND ps.subsection_id = s.subsection_id
+           LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id
+           LEFT JOIN entities e ON c.entity_id = e.id
+           WHERE ps.file_original_size = ? AND ps.file_last_modified = ?
+           LIMIT 1`
+        )
+        .get(fileOriginalSize, fileLastModified) as { route_name: string | null; subsection_name: string | null; entity_name: string | null; checkpoint_name: string | null } | undefined;
+      if (dup) {
+        const route = dup.route_name ?? 'Unknown Route';
+        const section = dup.subsection_name ?? 'Unknown Section';
+        const entity = dup.entity_name ?? 'Unknown Entity';
+        const checkpoint = dup.checkpoint_name ?? 'Unknown Checkpoint';
+        const msg = `Photo already uploaded for ${route} - ${section} - ${entity} - ${checkpoint}.`;
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
     }
 
     const entity = (photoCategory || 'Unknown').trim();
@@ -80,14 +116,25 @@ export async function POST(request: NextRequest) {
     let entityCode = to3CharCode(entity);
     let checkpointCode = to3CharCode(entity);
     try {
-      const allCheckpoints = query('SELECT id, entity, checkpoint_name FROM checkpoints ORDER BY id');
-      const rows = (allCheckpoints.rows ?? []) as { id: number; entity: string; checkpoint_name: string }[];
-      const checkpointCodeMap = uniqueCheckpointCodes(rows);
-      const entityCodeMap = uniqueEntityCodes(rows);
-      entityCode = entityCodeMap.get(entity) ?? entityCode;
+      const allCheckpoints = query(
+        'SELECT c.id, c.checkpoint_name, c.code AS checkpoint_code, e.name AS entity, e.code AS entity_code FROM checkpoints c LEFT JOIN entities e ON c.entity_id = e.id ORDER BY c.id'
+      );
+      const rows = (allCheckpoints.rows ?? []) as { id: number; checkpoint_name: string; checkpoint_code: string | null; entity: string; entity_code: string | null }[];
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const entityCodeByEntityName = new Map<string, string>();
+      const checkpointCodeById = new Map<number, string>();
+      for (const r of rows) {
+        if (r.entity && r.entity_code) entityCodeByEntityName.set(r.entity, r.entity_code);
+        if (r.checkpoint_code) checkpointCodeById.set(r.id, r.checkpoint_code);
+      }
+      if (entityCodeByEntityName.size > 0) entityCode = entityCodeByEntityName.get(entity) ?? entityCode;
       if (checkpointId) {
         const cid = parseInt(checkpointId, 10);
-        checkpointCode = checkpointCodeMap.get(cid) ?? checkpointCode;
+        checkpointCode = checkpointCodeById.get(cid) ?? uniqueCheckpointCodes(rows.map((r) => ({ id: r.id, checkpoint_name: r.checkpoint_name }))).get(cid) ?? checkpointCode;
+      }
+      if (entityCodeByEntityName.size === 0) {
+        const entityCodeMap = uniqueEntityCodes(rows.map((r) => ({ entity: r.entity || '' })));
+        entityCode = entityCodeMap.get(entity) ?? entityCode;
       }
     } catch {
       // ignore
@@ -97,9 +144,11 @@ export async function POST(request: NextRequest) {
     const userSelectStmt = db.prepare('SELECT id FROM users WHERE email = ?');
     const userResult = userSelectStmt.get(session.user.email) as { id: number } | undefined;
     let userId: number;
+    const firstAdminEmail = 'v.shah@cloudextel.com';
     if (!userResult) {
-      const userInsertStmt = db.prepare('INSERT INTO users (email, name) VALUES (?, ?)');
-      const userInsertResult = userInsertStmt.run(session.user.email, session.user.name || '');
+      const defaultRole = session.user.email === firstAdminEmail ? 'Admin' : 'Reviewer';
+      const userInsertStmt = db.prepare('INSERT INTO users (email, name, role) VALUES (?, ?, ?)');
+      const userInsertResult = userInsertStmt.run(session.user.email, session.user.name || '', defaultRole);
       userId = Number(userInsertResult.lastInsertRowid);
     } else {
       userId = userResult.id;
@@ -150,8 +199,8 @@ export async function POST(request: NextRequest) {
     const s3Url = `https://${process.env.AWS_S3_BUCKET_NAME || 'ce-df-photos'}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
 
     db.prepare(
-      `INSERT INTO photo_submissions (route_id, subsection_id, checkpoint_id, user_id, execution_stage, photo_type_number, photo_category, s3_key, s3_url, filename, file_size, width, height, format, latitude, longitude, location_accuracy, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
+      `INSERT INTO photo_submissions (route_id, subsection_id, checkpoint_id, user_id, execution_stage, photo_type_number, photo_category, s3_key, s3_url, filename, file_original_size, file_last_modified, file_size, width, height, format, latitude, longitude, location_accuracy, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
     ).run(
       String(routeId),
       String(subsectionId),
@@ -163,6 +212,8 @@ export async function POST(request: NextRequest) {
       s3Key,
       s3Url,
       filename,
+      fileOriginalSize ?? file.size,
+      fileLastModified ?? null,
       compressedBuffer.length,
       metadata.width,
       metadata.height,

@@ -12,12 +12,30 @@ async function getRoutes() {
   return res.json();
 }
 
-async function getPhotosByRoute(routeId: string) {
+async function getPhotosForMap(routeId: string, subsectionId?: string) {
   const params = new URLSearchParams({ routeId, limit: '500' });
+  if (subsectionId) params.set('subsectionId', subsectionId);
   const res = await fetch(`/api/photos?${params.toString()}`);
   if (!res.ok) throw new Error('Failed to fetch photos');
   return res.json();
 }
+
+async function getSubsections(routeId: string) {
+  const res = await fetch(`/api/subsections?route_id=${encodeURIComponent(routeId)}`);
+  if (!res.ok) throw new Error('Failed to fetch subsections');
+  return res.json();
+}
+
+async function getEntities() {
+  const res = await fetch('/api/entities');
+  if (!res.ok) throw new Error('Failed to fetch entities');
+  return res.json();
+}
+
+const ENTITY_PALETTE = [
+  '#2563eb', '#16a34a', '#dc2626', '#ea580c', '#9333ea', '#0d9488', '#ca8a04', '#db2777', '#4f46e5', '#0891b2', '#65a30d', '#c2410c',
+];
+const ENTITY_FALLBACK_COLOR = '#64748b';
 
 function distSq(
   a: { latitude?: number | null; longitude?: number | null },
@@ -79,12 +97,21 @@ export default function MapPage() {
   const mapInstanceRef = useRef<unknown>(null);
   const polylineLayerRef = useRef<unknown>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | ''>('');
+  const [selectedSubsectionId, setSelectedSubsectionId] = useState<string | ''>('');
+  const [selectedEntityName, setSelectedEntityName] = useState<string | ''>('');
   const [mounted, setMounted] = useState(false);
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
+  const { data: subsectionsData } = useQuery({
+    queryKey: ['subsections', selectedRouteId],
+    queryFn: () => getSubsections(selectedRouteId),
+    enabled: !!selectedRouteId,
+  });
+  const { data: entitiesData } = useQuery({ queryKey: ['entities'], queryFn: getEntities });
   const { data: photosData, isLoading } = useQuery({
-    queryKey: ['photos-map', selectedRouteId],
-    queryFn: () => getPhotosByRoute(selectedRouteId),
+    queryKey: ['photos-map', selectedRouteId, selectedSubsectionId || null],
+    queryFn: () =>
+      getPhotosForMap(selectedRouteId, selectedSubsectionId || undefined),
     enabled: !!selectedRouteId,
   });
 
@@ -93,10 +120,66 @@ export default function MapPage() {
     return routes.map((r) => ({ value: String(r.route_id), label: r.route_name ?? String(r.route_id) }));
   }, [routesData]);
 
+  const subsectionOptions = useMemo(() => {
+    const subsections = (subsectionsData?.subsections ?? []) as { subsection_id: string; subsection_name?: string }[];
+    return [{ value: '', label: 'All subsections' }, ...subsections.map((s) => ({ value: String(s.subsection_id), label: s.subsection_name ?? String(s.subsection_id) }))];
+  }, [subsectionsData]);
+
+  const entityOptions = useMemo(() => {
+    const entities = (entitiesData?.entities ?? []) as { id: number; name: string; code?: string }[];
+    return [{ value: '', label: 'All entities' }, ...entities.map((e) => ({ value: String(e.name), label: e.name }))];
+  }, [entitiesData]);
+
   const photosWithLocation = useMemo(() => {
     const photos = (photosData?.photos ?? []) as { latitude?: number; longitude?: number; id: number; filename?: string; checkpoint_name?: string; entity?: string; execution_stage?: string; status?: string }[];
-    return photos.filter((p) => p.latitude != null && p.longitude != null);
-  }, [photosData]);
+    let filtered = photos.filter((p) => p.latitude != null && p.longitude != null);
+    if (selectedEntityName) {
+      filtered = filtered.filter((p) => (p.entity ?? '') === selectedEntityName);
+    }
+    return filtered;
+  }, [photosData, selectedEntityName]);
+
+  const entityColorMap = useMemo(() => {
+    const entities = (entitiesData?.entities ?? []) as { id: number; name: string }[];
+    const orderFromApi = entities.map((e) => (e.name ?? '').trim());
+    const inPhotos = new Set(photosWithLocation.map((p) => (p.entity ?? '').trim()).filter(Boolean));
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    for (const name of orderFromApi) {
+      if (name && !seen.has(name)) {
+        ordered.push(name);
+        seen.add(name);
+      }
+    }
+    for (const name of inPhotos) {
+      if (name && !seen.has(name)) {
+        ordered.push(name);
+        seen.add(name);
+      }
+    }
+    const map = new Map<string, string>();
+    ordered.forEach((name, i) => {
+      map.set(name, ENTITY_PALETTE[i % ENTITY_PALETTE.length]);
+    });
+    return map;
+  }, [entitiesData, photosWithLocation]);
+
+  const legendEntities = useMemo(() => {
+    const seen = new Set<string>();
+    const hasUnknown = photosWithLocation.some((p) => !(p.entity ?? '').trim());
+    const list = photosWithLocation
+      .map((p) => (p.entity ?? '').trim() || '')
+      .filter((name, _, arr) => {
+        if (seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      })
+      .sort((a, b) => (a || 'Unknown').localeCompare(b || 'Unknown'));
+    if (hasUnknown && !seen.has('')) {
+      list.push('');
+    }
+    return list;
+  }, [photosWithLocation]);
 
   const sortedForLine = useMemo(() => orderPhotosByNearestNeighbor(photosWithLocation), [photosWithLocation]);
   const latLngs = useMemo(
@@ -138,23 +221,35 @@ export default function MapPage() {
         const polyline = Leaflet.polyline(latLngs, { color: '#2563eb', weight: 4, opacity: 0.8 }).addTo(map);
         polylineLayerRef.current = polyline;
       }
-      const locationPinIcon = Leaflet.divIcon({
-        className: 'ce-df-photos-location-marker',
-        html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" title="Photo location">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#2563eb"/>
-            <circle cx="12" cy="9" r="2.5" fill="white"/>
-          </svg>
-        </div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 28],
-      });
+      const iconCache = new Map<string, L.DivIcon>();
+      function getIconForColor(color: string): L.DivIcon {
+        let icon = iconCache.get(color);
+        if (!icon) {
+          const escaped = color.replace(/"/g, '&quot;');
+          icon = Leaflet.divIcon({
+            className: 'ce-df-photos-location-marker',
+            html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" title="Photo location">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${escaped}" style="fill:${escaped}"/>
+                <circle cx="12" cy="9" r="2.5" fill="white"/>
+              </svg>
+            </div>`,
+            iconSize: [28, 28],
+            iconAnchor: [14, 28],
+          });
+          iconCache.set(color, icon);
+        }
+        return icon;
+      }
 
       photosWithLocation.forEach((photo: { latitude?: number; longitude?: number; id: number; filename?: string; checkpoint_name?: string; entity?: string; execution_stage?: string; status?: string }) => {
         if (photo.latitude == null || photo.longitude == null) return;
+        const entityKey = (photo.entity ?? '').trim();
+        const color = entityColorMap.get(entityKey) ?? ENTITY_FALLBACK_COLOR;
+        const icon = getIconForColor(color);
         const imageUrl = `/api/photos/${photo.id}/image`;
         const viewFullUrl = `/view-photo/${photo.id}`;
-        Leaflet.marker([photo.latitude, photo.longitude], { icon: locationPinIcon })
+        Leaflet.marker([photo.latitude, photo.longitude], { icon })
           .addTo(map)
           .bindPopup(
             `<div style="min-width: 200px;">
@@ -172,7 +267,7 @@ export default function MapPage() {
         map.fitBounds(Leaflet.latLngBounds(latLngs), { padding: [40, 40], maxZoom: 16 });
       }
     });
-  }, [selectedRouteId, photosWithLocation, latLngs]);
+  }, [selectedRouteId, photosWithLocation, latLngs, entityColorMap]);
 
   useEffect(() => {
     return () => {
@@ -198,17 +293,59 @@ export default function MapPage() {
           <SearchableSelect
             options={routeOptions}
             value={selectedRouteId}
-            onChange={(v) => setSelectedRouteId(v === '' ? '' : String(v))}
+            onChange={(v) => {
+              const next = v === '' ? '' : String(v);
+              setSelectedRouteId(next);
+              if (next === '') setSelectedSubsectionId('');
+            }}
             placeholder="Select route"
             className="min-w-[180px]"
           />
           {selectedRouteId && (
-            <span className="text-slate-500 text-xs">{isLoading ? 'Loading…' : `${photosWithLocation.length} photo(s)`}</span>
+            <>
+              <label className="text-xs font-medium text-slate-600 shrink-0 ml-2">Subsection</label>
+              <SearchableSelect
+                options={subsectionOptions}
+                value={selectedSubsectionId}
+                onChange={(v) => setSelectedSubsectionId(v === '' ? '' : String(v))}
+                placeholder="All subsections"
+                className="min-w-[160px]"
+              />
+              <label className="text-xs font-medium text-slate-600 shrink-0 ml-2">Entity</label>
+              <SearchableSelect
+                options={entityOptions}
+                value={selectedEntityName}
+                onChange={(v) => setSelectedEntityName(v === '' ? '' : String(v))}
+                placeholder="All entities"
+                className="min-w-[140px]"
+              />
+            </>
+          )}
+          {selectedRouteId && (
+            <span className="text-slate-500 text-xs ml-2">{isLoading ? 'Loading…' : `${photosWithLocation.length} photo(s)`}</span>
           )}
         </div>
         {!selectedRouteId && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm mb-4">
             Select a route to see photos on the map.
+          </div>
+        )}
+        {selectedRouteId && photosWithLocation.length > 0 && legendEntities.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
+            <span className="font-medium text-slate-600">Entity</span>
+            {legendEntities.map((name) => {
+              const color = entityColorMap.get(name) ?? ENTITY_FALLBACK_COLOR;
+              return (
+                <span key={name} className="inline-flex items-center gap-1.5">
+                  <span
+                    className="w-3 h-3 rounded-full shrink-0 border border-slate-300"
+                    style={{ backgroundColor: color }}
+                    aria-hidden
+                  />
+                  <span className="text-slate-700">{name || 'Unknown'}</span>
+                </span>
+              );
+            })}
           </div>
         )}
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">

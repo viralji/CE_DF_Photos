@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionOrDevBypass } from '@/lib/auth-helpers';
+import { getSessionOrDevBypass, getSessionWithRole } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
+import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSessionOrDevBypass(request);
+    const session = await getSessionWithRole(request);
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const result = query('SELECT * FROM routes ORDER BY route_name', []);
+    const allowedKeys = getAllowedSubsectionKeys(session.user.email, session.role);
+    if (allowedKeys.size === 0) {
+      return NextResponse.json({ routes: [] });
+    }
+    const routeIds = [...new Set([...allowedKeys].map((k) => k.split('::')[0]))];
+    const placeholders = routeIds.map(() => '?').join(',');
+    const result = query(
+      `SELECT * FROM routes WHERE route_id IN (${placeholders}) ORDER BY route_name`,
+      routeIds
+    );
     return NextResponse.json({ routes: result.rows });
   } catch (error: unknown) {
     console.error('Error fetching routes:', error);
@@ -18,9 +28,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSessionOrDevBypass(request);
+    const session = await getSessionWithRole(request);
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role !== 'Admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const body = await request.json();
     const { route_id, route_name } = body;

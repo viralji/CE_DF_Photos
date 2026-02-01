@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
@@ -58,7 +58,7 @@ export default function GalleryPage() {
     status?: string;
   }[];
 
-  const groupedByEntity = (() => {
+  const groupedByEntity = useMemo(() => {
     const map: Record<string, Record<string, typeof photos>> = {};
     photos.forEach((p) => {
       const entity = p.entity || 'Other';
@@ -68,7 +68,7 @@ export default function GalleryPage() {
       map[entity][cp].push(p);
     });
     return map;
-  })();
+  }, [photos]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">

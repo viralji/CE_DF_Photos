@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run against a running server: npm run start (or dev) then ./scripts/test-api.sh
 # Or: npm run start & sleep 5 && ./scripts/test-api.sh
-BASE="${1:-http://127.0.0.1:3000}"
+BASE="${1:-http://127.0.0.1:3001}"
 COOKIE="dev-bypass-auth=true"
 FAIL=0
 
@@ -37,8 +37,9 @@ else
   FAIL=1
 fi
 
-# POST route (create a test route)
-body='{"route_id":99999,"route_name":"Test Route E2E"}'
+# POST route (create a test route; use unique id to avoid 500 on duplicate)
+ROUTE_ID="e2e-$(date +%s)"
+body="{\"route_id\":\"$ROUTE_ID\",\"route_name\":\"Test Route E2E\"}"
 code=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "$body" -b "$COOKIE" "$BASE/api/routes")
 if [ "$code" = "200" ] || [ "$code" = "201" ]; then
   echo "✓ POST /api/routes ($code)"

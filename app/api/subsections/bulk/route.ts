@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionOrDevBypass } from '@/lib/auth-helpers';
+import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSessionOrDevBypass(request);
+    const session = await getSessionWithRole(request);
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role !== 'Admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const body = await request.json();
     const subsections = Array.isArray(body.subsections) ? body.subsections : [];
