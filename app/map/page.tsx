@@ -98,7 +98,8 @@ export default function MapPage() {
   const polylineLayerRef = useRef<unknown>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | ''>('');
   const [selectedSubsectionId, setSelectedSubsectionId] = useState<string | ''>('');
-  const [selectedEntityName, setSelectedEntityName] = useState<string | ''>('');
+  const [entityFilterMode, setEntityFilterMode] = useState<'all' | 'multiple'>('all');
+  const [selectedEntityNames, setSelectedEntityNames] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
@@ -125,19 +126,19 @@ export default function MapPage() {
     return [{ value: '', label: 'All subsections' }, ...subsections.map((s) => ({ value: String(s.subsection_id), label: s.subsection_name ?? String(s.subsection_id) }))];
   }, [subsectionsData]);
 
-  const entityOptions = useMemo(() => {
+  const entityList = useMemo(() => {
     const entities = (entitiesData?.entities ?? []) as { id: number; name: string; code?: string }[];
-    return [{ value: '', label: 'All entities' }, ...entities.map((e) => ({ value: String(e.name), label: e.name }))];
+    return entities.map((e) => (e.name ?? '').trim()).filter(Boolean);
   }, [entitiesData]);
 
   const photosWithLocation = useMemo(() => {
     const photos = (photosData?.photos ?? []) as { latitude?: number; longitude?: number; id: number; filename?: string; checkpoint_name?: string; entity?: string; execution_stage?: string; status?: string }[];
     let filtered = photos.filter((p) => p.latitude != null && p.longitude != null);
-    if (selectedEntityName) {
-      filtered = filtered.filter((p) => (p.entity ?? '') === selectedEntityName);
+    if (entityFilterMode === 'multiple' && selectedEntityNames.size > 0) {
+      filtered = filtered.filter((p) => selectedEntityNames.has((p.entity ?? '').trim()));
     }
     return filtered;
-  }, [photosData, selectedEntityName]);
+  }, [photosData, entityFilterMode, selectedEntityNames]);
 
   const entityColorMap = useMemo(() => {
     const entities = (entitiesData?.entities ?? []) as { id: number; name: string }[];
@@ -253,8 +254,8 @@ export default function MapPage() {
           .addTo(map)
           .bindPopup(
             `<div style="min-width: 200px;">
-              <a href="${viewFullUrl}" target="_blank" rel="noopener noreferrer"><img src="${imageUrl}" alt="" style="width: 200px; height: 200px; object-fit: cover;" /></a>
-              <a href="${viewFullUrl}" target="_blank" rel="noopener noreferrer">View full size</a>
+              <a href="${viewFullUrl}"><img src="${imageUrl}" alt="" style="width: 200px; height: 200px; object-fit: cover;" /></a>
+              <a href="${viewFullUrl}">View full size</a>
               <p><strong>${(photo.checkpoint_name || '').replace(/</g, '&lt;')}</strong></p>
               <p>${(photo.entity || '').replace(/</g, '&lt;')} - ${(photo.execution_stage || '').replace(/</g, '&lt;')}</p>
               <p>Status: ${(photo.status || '').replace(/</g, '&lt;')}</p>
@@ -288,43 +289,91 @@ export default function MapPage() {
         </div>
       </header>
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-4">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <label className="text-xs font-medium text-slate-600 shrink-0">Route</label>
-          <SearchableSelect
-            options={routeOptions}
-            value={selectedRouteId}
-            onChange={(v) => {
-              const next = v === '' ? '' : String(v);
-              setSelectedRouteId(next);
-              if (next === '') setSelectedSubsectionId('');
-            }}
-            placeholder="Select route"
-            className="min-w-[180px]"
-          />
-          {selectedRouteId && (
-            <>
-              <label className="text-xs font-medium text-slate-600 shrink-0 ml-2">Subsection</label>
-              <SearchableSelect
-                options={subsectionOptions}
-                value={selectedSubsectionId}
-                onChange={(v) => setSelectedSubsectionId(v === '' ? '' : String(v))}
-                placeholder="All subsections"
-                className="min-w-[160px]"
-              />
-              <label className="text-xs font-medium text-slate-600 shrink-0 ml-2">Entity</label>
-              <SearchableSelect
-                options={entityOptions}
-                value={selectedEntityName}
-                onChange={(v) => setSelectedEntityName(v === '' ? '' : String(v))}
-                placeholder="All entities"
-                className="min-w-[140px]"
-              />
-            </>
-          )}
-          {selectedRouteId && (
-            <span className="text-slate-500 text-xs ml-2">{isLoading ? 'Loading…' : `${photosWithLocation.length} photo(s)`}</span>
-          )}
+        {/* Route and Subsection side by side */}
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Route</label>
+            <SearchableSelect
+              options={routeOptions}
+              value={selectedRouteId}
+              onChange={(v) => {
+                const next = v === '' ? '' : String(v);
+                setSelectedRouteId(next);
+                if (next === '') setSelectedSubsectionId('');
+              }}
+              placeholder="Select route"
+              className="min-w-0 w-full"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Subsection</label>
+            <SearchableSelect
+              options={subsectionOptions}
+              value={selectedSubsectionId}
+              onChange={(v) => setSelectedSubsectionId(v === '' ? '' : String(v))}
+              placeholder="All subsections"
+              className="min-w-0 w-full"
+              disabled={!selectedRouteId}
+            />
+          </div>
         </div>
+
+        {/* Entity: radio All vs Select multiple */}
+        {selectedRouteId && (
+          <div className="mb-4 bg-white border border-slate-200 rounded-lg p-4">
+            <span className="text-xs font-medium text-slate-600 block mb-2">Entity</span>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="entity-mode"
+                  checked={entityFilterMode === 'all'}
+                  onChange={() => setEntityFilterMode('all')}
+                  className="rounded-full border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-700">All entities</span>
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="entity-mode"
+                  checked={entityFilterMode === 'multiple'}
+                  onChange={() => setEntityFilterMode('multiple')}
+                  className="rounded-full border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-700">Select multiple</span>
+              </label>
+            </div>
+            {entityFilterMode === 'multiple' && (
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-2">
+                {entityList.map((name) => {
+                  const color = entityColorMap.get(name) ?? ENTITY_FALLBACK_COLOR;
+                  const checked = selectedEntityNames.has(name);
+                  return (
+                    <label key={name} className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedEntityNames((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(name)) next.delete(name);
+                            else next.add(name);
+                            return next;
+                          });
+                        }}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="w-3 h-3 rounded-full shrink-0 border border-slate-300" style={{ backgroundColor: color }} aria-hidden />
+                      <span className="text-sm text-slate-700">{name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-slate-500 text-xs mt-2">{isLoading ? 'Loading…' : `${photosWithLocation.length} photo(s)`}</p>
+          </div>
+        )}
         {!selectedRouteId && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm mb-4">
             Select a route to see photos on the map.

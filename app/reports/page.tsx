@@ -249,7 +249,7 @@ export default function ReportsPage() {
                       <td className="p-2 font-mono text-xs text-slate-600 truncate max-w-[10rem]">{photo.filename || '—'}</td>
                       <td className="p-2">
                         {photo.s3_url && (
-                          <a href={photo.s3_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 font-medium text-xs">
+                          <a href={photo.s3_url} className="text-blue-600 hover:text-blue-700 font-medium text-xs">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                             </svg>

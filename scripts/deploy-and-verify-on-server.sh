@@ -2,16 +2,19 @@
 # Run this ON the server (e.g. after SSH). Deploys code, ensures DB + seed, restarts app, health check.
 # Usage: cd /path/to/CE_DF_Photos && ./scripts/deploy-and-verify-on-server.sh
 # If app listens on 3001 (not 13001): APP_PORT=3001 ./scripts/deploy-and-verify-on-server.sh
-# See docs/migration-and-deployment.md for full deployment docs.
+# See README.md "Deployment" section for full docs.
 set -e
 APP_DIR="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$APP_DIR"
 APP_PORT="${APP_PORT:-13001}"
 echo "=== Deploy in $APP_DIR (health check port: $APP_PORT) ==="
+[ -f package.json ] || { echo "Missing package.json"; exit 1; }
+[ -d .git ] || { echo "Not a git repo"; exit 1; }
 git pull
 npm ci
-npm run build
+npm run build || { echo "Build failed"; exit 1; }
 echo "=== DB setup and seed (idempotent) ==="
+# db:setup: schema from create-schema.sql (if new DB) + in-code migrations (lib/db.ts): app_settings, routes.length, subsections.length, photo_submission_comments, etc.
 npm run db:setup
 npm run db:seed-entities-checkpoints || {
   echo "○ Seed failed (e.g. old schema). Run: npm run db:fix-schema && npm run db:seed-entities-checkpoints"

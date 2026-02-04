@@ -60,6 +60,9 @@ export async function DELETE(
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    if (session.role !== 'Admin') {
+      return NextResponse.json({ error: 'Only Admin can delete photos' }, { status: 403 });
+    }
     const { id } = await params;
     const photoId = parseInt(id, 10);
     if (isNaN(photoId)) {
@@ -76,6 +79,17 @@ export async function DELETE(
     if (!row) return NextResponse.json({ error: 'Photo not found' }, { status: 404 });
     if (row.status === 'approved') {
       return NextResponse.json({ error: 'Cannot delete approved photo' }, { status: 400 });
+    }
+    const childCheck = query(
+      'SELECT 1 FROM photo_submissions WHERE resubmission_of_id = ? LIMIT 1',
+      [photoId]
+    );
+    const hasChild = (childCheck.rows?.length ?? 0) > 0;
+    if (hasChild) {
+      return NextResponse.json(
+        { error: 'Only the latest photo in a slot can be deleted. This photo has a resubmission.' },
+        { status: 400 }
+      );
     }
     const { getDb } = await import('@/lib/db');
     const db = getDb();

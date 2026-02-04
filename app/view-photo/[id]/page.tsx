@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { PhotoImage } from '@/components/PhotoImage';
 
 type Comment = { id: number; author_email: string; author_name: string | null; created_at: string; comment_text: string };
@@ -16,6 +15,7 @@ async function getPhoto(id: string) {
 
 export default function ViewPhotoPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params?.id as string;
   const queryClient = useQueryClient();
   const { data: photo, isLoading, error } = useQuery({
@@ -71,7 +71,7 @@ export default function ViewPhotoPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-4">
       <div className="max-w-4xl mx-auto">
-        <Link href="/dashboard" className="text-slate-500 hover:text-slate-700 text-sm mb-4 inline-block">← Dashboard</Link>
+        <button type="button" onClick={() => router.back()} className="text-slate-500 hover:text-slate-700 text-sm mb-4 inline-block">← Back</button>
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <PhotoImage photoId={photo.id} alt={photo.filename || ''} className="w-full h-auto block" />
           <div className="p-3 border-t border-slate-100 space-y-2">

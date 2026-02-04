@@ -3,9 +3,14 @@
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useState, useEffect } from 'react';
 
 export default function SignInPage() {
-  const isDev = process.env.NODE_ENV === 'development';
+  const [isDev, setIsDev] = useState(false);
+  
+  useEffect(() => {
+    setIsDev(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">

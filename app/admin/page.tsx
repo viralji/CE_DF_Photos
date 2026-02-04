@@ -64,6 +64,7 @@ export default function AdminPage() {
   const [message, setMessage] = useState('');
   const [bulkMessage, setBulkMessage] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [syncErpnextLoading, setSyncErpnextLoading] = useState(false);
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
 
@@ -85,8 +86,8 @@ export default function AdminPage() {
     enabled: activeTab === 3 && !!meData?.user?.email,
   });
 
-  const routes = (routesData?.routes ?? []) as { route_id: string; route_name: string }[];
-  const subsections = (subsectionsData?.subsections ?? []) as { route_id: string; subsection_id: string; subsection_name: string }[];
+  const routes = (routesData?.routes ?? []) as { route_id: string; route_name: string; length?: number | null }[];
+  const subsections = (subsectionsData?.subsections ?? []) as { route_id: string; subsection_id: string; subsection_name: string; length?: number | null }[];
   const checkpoints = (checkpointsData?.checkpoints ?? []) as {
     id: number;
     entity_id: number;
@@ -516,6 +517,7 @@ export default function AdminPage() {
             { label: 'Entities & Checkpoints', idx: 1 },
             { label: 'Subsection emails', idx: 2 },
             { label: 'Users & roles', idx: 3 },
+            { label: 'Settings', idx: 4 },
           ].map(({ label, idx }) => (
             <button
               key={idx}
@@ -566,6 +568,38 @@ export default function AdminPage() {
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h2 className="font-semibold text-slate-900 text-sm mb-3">Sync with ERPNext</h2>
+          <p className="text-xs text-slate-500 mb-3">Fetch report &quot;DF QC App Report&quot; from ERPNext and add missing routes (ID from 1001) and subsections (ID from 10001). Existing data is never deleted.</p>
+          <button
+            type="button"
+            onClick={async () => {
+              setSyncErpnextLoading(true);
+              setMessage('');
+              try {
+                const res = await fetch('/api/sync-erpnext', { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                  setMessage(`❌ ${data?.message ?? data?.error ?? 'Sync failed'}`);
+                  return;
+                }
+                setMessage(`✓ ${data?.message ?? 'Synced.'}`);
+                scheduleMessageClear();
+                queryClient.invalidateQueries({ queryKey: ['routes'] });
+                queryClient.invalidateQueries({ queryKey: ['subsections'] });
+              } catch (e) {
+                setMessage(`❌ ${(e as Error).message}`);
+              } finally {
+                setSyncErpnextLoading(false);
+              }
+            }}
+            disabled={syncErpnextLoading}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {syncErpnextLoading ? 'Syncing…' : 'Sync with ERPNext'}
+          </button>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h2 className="font-semibold text-slate-900 text-sm mb-3">Create Subsection</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div>
@@ -589,6 +623,58 @@ export default function AdminPage() {
           <button onClick={createSubsection} className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
             Create Subsection
           </button>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h2 className="font-semibold text-slate-900 text-sm mb-3">Routes (review)</h2>
+          <p className="text-xs text-slate-500 mb-2">Length is populated from ERP sync (route_length).</p>
+          <div className="overflow-x-auto max-h-[30vh] overflow-y-auto mb-4">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                <tr>
+                  <th className="text-left p-2 font-semibold text-slate-700">Route ID</th>
+                  <th className="text-left p-2 font-semibold text-slate-700">Route Name</th>
+                  <th className="text-left p-2 font-semibold text-slate-700">Length</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {routes.map((r) => (
+                  <tr key={r.route_id} className="hover:bg-slate-50">
+                    <td className="p-2 font-mono text-slate-800">{r.route_id}</td>
+                    <td className="p-2 text-slate-900">{r.route_name || '—'}</td>
+                    <td className="p-2 text-slate-600">{r.length != null ? String(r.length) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h2 className="font-semibold text-slate-900 text-sm mb-3">Subsections (review)</h2>
+          <p className="text-xs text-slate-500 mb-2">Length is populated from ERP sync (subsection_length).</p>
+          <div className="overflow-x-auto max-h-[30vh] overflow-y-auto mb-4">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                <tr>
+                  <th className="text-left p-2 font-semibold text-slate-700">Route ID</th>
+                  <th className="text-left p-2 font-semibold text-slate-700">Subsection ID</th>
+                  <th className="text-left p-2 font-semibold text-slate-700">Subsection Name</th>
+                  <th className="text-left p-2 font-semibold text-slate-700">Length</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {subsections.map((s) => (
+                  <tr key={s.route_id + '::' + s.subsection_id} className="hover:bg-slate-50">
+                    <td className="p-2 font-mono text-slate-800">{s.route_id}</td>
+                    <td className="p-2 font-mono text-slate-800">{s.subsection_id}</td>
+                    <td className="p-2 text-slate-900">{s.subsection_name || '—'}</td>
+                    <td className="p-2 text-slate-600">{s.length != null ? String(s.length) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-4">
@@ -940,6 +1026,104 @@ export default function AdminPage() {
               </table>
             </div>
           )}
+        </div>
+        )}
+
+        {activeTab === 4 && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h2 className="font-semibold text-slate-900 text-sm mb-3">Capture rules</h2>
+          <p className="text-xs text-slate-500 mb-3">When enabled, users cannot take a photo if they are more than 40 m from their previous capture. Turn off temporarily if a user needs an exception.</p>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={meData?.captureDistanceCheckEnabled !== false}
+              onChange={async (e) => {
+                const enabled = e.target.checked;
+                try {
+                  const res = await fetch('/api/settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ captureDistanceCheckEnabled: enabled }),
+                  });
+                  if (!res.ok) throw new Error('Failed to update');
+                  await queryClient.invalidateQueries({ queryKey: ['me'] });
+                  scheduleMessageClear();
+                  setMessage(enabled ? '✓ 40 m distance check enabled.' : '✓ 40 m distance check disabled (exceptions allowed).');
+                } catch (err) {
+                  setMessage('❌ Failed to update setting.');
+                }
+              }}
+              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-slate-800">Enforce 40 m capture distance (disable for exceptions)</span>
+          </label>
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <p className="text-xs text-slate-500 mb-2">Max GPS accuracy (m): block capture if accuracy is worse than ±X m. Leave empty or disable for no limit.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                key={`max-acc-${meData?.maxGpsAccuracyMeters ?? 'none'}`}
+                type="number"
+                min={1}
+                step={1}
+                placeholder="20"
+                defaultValue={meData?.maxGpsAccuracyMeters ?? ''}
+                id="admin-max-gps-accuracy"
+                className="w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  const el = document.getElementById('admin-max-gps-accuracy') as HTMLInputElement | null;
+                  const raw = el?.value?.trim();
+                  const val = raw === '' ? null : Math.floor(Number(raw));
+                  if (val !== null && (!Number.isFinite(val) || val <= 0)) {
+                    scheduleMessageClear();
+                    setMessage('❌ Enter a positive number or leave empty.');
+                    return;
+                  }
+                  try {
+                    const res = await fetch('/api/settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ maxGpsAccuracyMeters: val }),
+                    });
+                    if (!res.ok) throw new Error('Failed to update');
+                    await queryClient.invalidateQueries({ queryKey: ['me'] });
+                    scheduleMessageClear();
+                    setMessage(val != null ? `✓ Max GPS accuracy set to ±${val} m.` : '✓ GPS accuracy limit disabled.');
+                  } catch (err) {
+                    setMessage('❌ Failed to update setting.');
+                  }
+                }}
+                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const el = document.getElementById('admin-max-gps-accuracy') as HTMLInputElement | null;
+                  if (el) el.value = '';
+                  try {
+                    const res = await fetch('/api/settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ maxGpsAccuracyMeters: null }),
+                    });
+                    if (!res.ok) throw new Error('Failed to update');
+                    await queryClient.invalidateQueries({ queryKey: ['me'] });
+                    scheduleMessageClear();
+                    setMessage('✓ GPS accuracy limit disabled.');
+                  } catch (err) {
+                    setMessage('❌ Failed to update setting.');
+                  }
+                }}
+                className="px-3 py-1.5 border border-slate-300 text-slate-700 text-sm rounded hover:bg-slate-50"
+              >
+                Disable
+              </button>
+            </div>
+          </div>
         </div>
         )}
       </main>

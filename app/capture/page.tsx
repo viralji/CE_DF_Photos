@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { CameraCapture } from '@/components/camera/CameraCapture';
-import { uniqueCheckpointCodes, uniqueEntityCodes } from '@/lib/photo-filename';
+import { loadLastCaptureLocation, saveLastCaptureLocation } from '@/lib/capture-session';
 
 const STAGE_MAP: Record<string, string> = { Before: 'B', Ongoing: 'O', After: 'A' };
 
@@ -31,6 +31,12 @@ async function getPhotos(routeId: string, subsectionId: string) {
 async function getCheckpoints() {
   const res = await fetch('/api/checkpoints');
   if (!res.ok) throw new Error('Failed to fetch checkpoints');
+  return res.json();
+}
+
+async function getMe() {
+  const res = await fetch('/api/me');
+  if (!res.ok) throw new Error('Failed to fetch user');
   return res.json();
 }
 
@@ -67,8 +73,16 @@ export default function CapturePage() {
   const [resubmitCommentModal, setResubmitCommentModal] = useState<{ photoId: number; row: RequiredRow } | null>(null);
   const [resubmitCommentInput, setResubmitCommentInput] = useState('');
   const [resubmitCommentToSend, setResubmitCommentToSend] = useState('');
+  const [lastCaptureLocation, setLastCaptureLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [showDistanceExceededPopup, setShowDistanceExceededPopup] = useState(false);
+  const [distanceExceededValue, setDistanceExceededValue] = useState<number | null>(null);
+  const [showAccuracyExceededPopup, setShowAccuracyExceededPopup] = useState(false);
+  const [accuracyExceededValue, setAccuracyExceededValue] = useState<number | null>(null);
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
+  const { data: meData } = useQuery({ queryKey: ['me'], queryFn: getMe });
+  const captureDistanceCheckEnabled = (meData?.captureDistanceCheckEnabled ?? true) as boolean;
+  const maxGpsAccuracyMeters = (meData?.maxGpsAccuracyMeters ?? null) as number | null;
   const { data: subsectionsData } = useQuery({
     queryKey: ['subsections', routeId],
     queryFn: () => getSubsections(routeId),
@@ -109,9 +123,6 @@ export default function CapturePage() {
     execution_stage?: string | null;
     photo_type?: number;
   }[];
-
-  const checkpointCodeMap = useMemo(() => uniqueCheckpointCodes(checkpoints.map((c) => ({ id: c.id, checkpoint_name: c.checkpoint_name }))), [checkpoints]);
-  const entityCodeMap = useMemo(() => uniqueEntityCodes(checkpoints.map((c) => ({ entity: c.entity || '' }))), [checkpoints]);
 
   const requiredRows = useMemo(() => {
     const rows: RequiredRow[] = [];
@@ -176,6 +187,12 @@ export default function CapturePage() {
     return order.map((entity) => [entity, map[entity]] as [string, RequiredRow[]]);
   }, [allRows]);
 
+  // Session = until logout. Restore last capture from localStorage so 40 m applies across refreshes/navigations.
+  useEffect(() => {
+    const stored = loadLastCaptureLocation();
+    if (stored) setLastCaptureLocation(stored);
+  }, []);
+
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocationStatus('denied');
@@ -221,6 +238,11 @@ export default function CapturePage() {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('comment', commentToSend);
+        if (geo) {
+          formData.append('latitude', String(geo.latitude));
+          formData.append('longitude', String(geo.longitude));
+          if (geo.accuracy != null) formData.append('locationAccuracy', String(geo.accuracy));
+        }
         const res = await fetch(`/api/photos/${existingPhotoId}/resubmit`, { method: 'POST', body: formData });
         const text = await res.text();
         let data: { error?: string } = {};
@@ -257,6 +279,30 @@ export default function CapturePage() {
           return;
         }
         setMessage('Photo uploaded successfully!');
+        let loc: { latitude: number; longitude: number } | null = geo
+          ? { latitude: geo.latitude, longitude: geo.longitude }
+          : null;
+        if (!loc && typeof navigator !== 'undefined' && navigator.geolocation) {
+          try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                maximumAge: 5000,
+                timeout: 8000,
+              });
+            });
+            loc = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            };
+          } catch {
+            // ignore
+          }
+        }
+        if (loc) {
+          setLastCaptureLocation(loc);
+          saveLastCaptureLocation(loc);
+        }
       }
       const elapsed = Date.now() - startTime;
       const minWait = Math.max(0, 1500 - elapsed);
@@ -311,6 +357,61 @@ export default function CapturePage() {
           <div className="bg-white rounded-xl shadow-2xl px-6 py-5 flex items-center gap-4 min-w-[240px]">
             <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
             <span className="font-medium text-slate-800">Processing and uploading photo…</span>
+          </div>
+        </div>
+      )}
+      {showDistanceExceededPopup && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/40"
+          aria-live="polite"
+          role="dialog"
+          aria-labelledby="distance-exceeded-title"
+          aria-describedby="distance-exceeded-desc"
+        >
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-5 border border-slate-200">
+            <h2 id="distance-exceeded-title" className="font-semibold text-slate-900 text-base mb-2">
+              Distance too far
+            </h2>
+            <p id="distance-exceeded-desc" className="text-sm text-slate-600 mb-4">
+              {distanceExceededValue != null
+                ? `You are about ${Math.round(distanceExceededValue)} m from your last capture. Distance must be 40 m or less to take a photo. Contact Admin to enable an exception.`
+                : 'You are more than 40 m from your last capture. You cannot take a photo. Contact Admin to enable exception.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setShowDistanceExceededPopup(false); setDistanceExceededValue(null); }}
+              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showAccuracyExceededPopup && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/40"
+          aria-live="polite"
+          role="dialog"
+          aria-labelledby="accuracy-exceeded-title"
+          aria-describedby="accuracy-exceeded-desc"
+        >
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-5 border border-slate-200">
+            <h2 id="accuracy-exceeded-title" className="font-semibold text-slate-900 text-base mb-2">
+              GPS accuracy too low
+            </h2>
+            <p id="accuracy-exceeded-desc" className="text-sm text-slate-600 mb-4">
+              {accuracyExceededValue != null && Number.isFinite(accuracyExceededValue)
+                ? `GPS accuracy ±${Math.round(accuracyExceededValue)} m is worse than the allowed ±${maxGpsAccuracyMeters ?? '?'} m. Move to open sky or enable high-accuracy GPS and try again.`
+                : `GPS accuracy is unknown. The allowed accuracy is ±${maxGpsAccuracyMeters ?? '?'} m. Move to open sky or enable high-accuracy GPS and try again.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setShowAccuracyExceededPopup(false); setAccuracyExceededValue(null); }}
+              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition-colors"
+            >
+              Dismiss
+            </button>
           </div>
         </div>
       )}
@@ -421,8 +522,7 @@ export default function CapturePage() {
                 });
                 return (
                 <div key={entityName} className="relative">
-                  <div className="sticky top-14 z-20 px-3 py-1 leading-tight bg-blue-50 border-b border-blue-100 text-blue-800 font-semibold text-xs uppercase tracking-wide flex items-center gap-2">
-                    <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded">{entityCodeMap.get(entityName || 'Other') ?? '—'}</span>
+                  <div className="sticky top-14 z-20 px-3 py-1 leading-tight bg-blue-50 border-b border-blue-100 text-blue-800 font-semibold text-xs uppercase tracking-wide">
                     {entityName}
                   </div>
                   <div className="pt-0.5">
@@ -465,7 +565,6 @@ export default function CapturePage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-slate-500 text-xs shrink-0">{checkpointCodeMap.get(row.checkpointId) ?? '—'}</span>
                           <span className="font-medium text-slate-900 text-sm truncate">{row.checkpointName}</span>
                           <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${
                             row.stage === 'Before' ? 'bg-blue-100 text-blue-700' :
@@ -493,12 +592,13 @@ export default function CapturePage() {
                           {needsAttention && (
                             <button
                               onClick={() => setCommentModalPhotoId(photo.id)}
-                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
-                              title="View comments"
+                              className="inline-flex items-center gap-1 p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                              title="View reviewer feedback before retake"
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                               </svg>
+                              <span className="text-xs font-medium hidden sm:inline">View feedback</span>
                             </button>
                           )}
                           <button
@@ -565,6 +665,18 @@ export default function CapturePage() {
             setResubmitCommentToSend('');
           }}
           disabled={locationStatus !== 'granted'}
+          lastCaptureLocation={lastCaptureLocation}
+          maxDistanceMeters={40}
+          distanceCheckEnabled={captureDistanceCheckEnabled}
+          onDistanceExceeded={(dist) => {
+            setDistanceExceededValue(dist);
+            setShowDistanceExceededPopup(true);
+          }}
+          maxAccuracyMeters={maxGpsAccuracyMeters}
+          onAccuracyExceeded={(acc) => {
+            setAccuracyExceededValue(Number.isFinite(acc) ? acc : null);
+            setShowAccuracyExceededPopup(true);
+          }}
         />
       )}
 
@@ -576,8 +688,6 @@ export default function CapturePage() {
             <div className="absolute top-4 right-4 flex gap-2">
               <Link
                 href={`/view-photo/${viewingPhoto.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="px-3 py-1.5 bg-white/90 hover:bg-white text-slate-800 text-sm font-medium rounded"
               >
                 View Full Size

@@ -1,10 +1,15 @@
 -- Database schema for CE_DF_Photos (SQLite)
--- Version: with entities table, checkpoints.entity_id, subsection_allowed_emails
+-- Version: entities, checkpoints.entity_id, subsection_allowed_emails, photo_submissions.resubmission_of_id, app_settings, routes.length, subsections.length
+--
+-- Deployment (e.g. Digital Ocean): Use "npm run db:setup" then "npm run db:seed-entities-checkpoints".
+-- db:setup loads this schema on first run and applies all in-code migrations (lib/db.ts), including resubmission_of_id, app_settings, routes/subsections length.
+-- New installs: schema is applied via getDb() in lib/db.ts. Existing DBs: run db:setup (idempotent).
 
 CREATE TABLE IF NOT EXISTS routes (
   row_id INTEGER PRIMARY KEY AUTOINCREMENT,
   route_id TEXT NOT NULL UNIQUE,
   route_name TEXT NOT NULL,
+  length REAL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -14,6 +19,7 @@ CREATE TABLE IF NOT EXISTS subsections (
   route_id TEXT NOT NULL,
   subsection_id TEXT NOT NULL,
   subsection_name TEXT NOT NULL,
+  length REAL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (route_id) REFERENCES routes(route_id) ON DELETE CASCADE,
@@ -91,13 +97,15 @@ CREATE TABLE IF NOT EXISTS photo_submissions (
   reviewer_id INTEGER,
   reviewed_at DATETIME,
   review_comment TEXT,
+  resubmission_of_id INTEGER,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (route_id) REFERENCES routes(route_id),
   FOREIGN KEY (route_id, subsection_id) REFERENCES subsections(route_id, subsection_id),
   FOREIGN KEY (checkpoint_id) REFERENCES checkpoints(id),
   FOREIGN KEY (user_id) REFERENCES users(id),
-  FOREIGN KEY (reviewer_id) REFERENCES users(id)
+  FOREIGN KEY (reviewer_id) REFERENCES users(id),
+  FOREIGN KEY (resubmission_of_id) REFERENCES photo_submissions(id)
 );
 
 CREATE TABLE IF NOT EXISTS document_submissions (
@@ -157,6 +165,24 @@ CREATE INDEX IF NOT EXISTS idx_photo_submissions_checkpoint ON photo_submissions
 CREATE INDEX IF NOT EXISTS idx_photo_submissions_user ON photo_submissions(user_id);
 CREATE INDEX IF NOT EXISTS idx_photo_submissions_status ON photo_submissions(status);
 CREATE INDEX IF NOT EXISTS idx_photo_submissions_location ON photo_submissions(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_photo_submissions_resubmission_of ON photo_submissions(resubmission_of_id);
 CREATE INDEX IF NOT EXISTS idx_subsections_route ON subsections(route_id);
 CREATE INDEX IF NOT EXISTS idx_checkpoints_entity_id ON checkpoints(entity_id);
 CREATE INDEX IF NOT EXISTS idx_entities_display_order ON entities(display_order);
+
+CREATE TABLE IF NOT EXISTS user_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_email TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('question', 'suggestion')),
+  content TEXT NOT NULL,
+  response TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_user_feedback_author ON user_feedback(author_email);
+CREATE INDEX IF NOT EXISTS idx_user_feedback_created ON user_feedback(created_at);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('capture_distance_check_enabled', '1');

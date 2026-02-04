@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { query } from '@/lib/db';
+import { limitLength, MAX_ROUTE_SUBSECTION_ID_LENGTH } from '@/lib/sanitize';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 
 export async function GET(request: NextRequest) {
@@ -23,9 +24,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ photos: [] });
     }
     const { searchParams } = new URL(request.url);
-    const routeId = searchParams.get('routeId');
-    const subsectionId = searchParams.get('subsectionId');
+    const routeIdRaw = searchParams.get('routeId');
+    const subsectionIdRaw = searchParams.get('subsectionId');
+    const routeId = routeIdRaw ? limitLength(routeIdRaw, MAX_ROUTE_SUBSECTION_ID_LENGTH) || null : null;
+    const subsectionId = subsectionIdRaw ? limitLength(subsectionIdRaw, MAX_ROUTE_SUBSECTION_ID_LENGTH) || null : null;
     const status = searchParams.get('status');
+    const latestPerSlot = searchParams.get('latestPerSlot') !== 'false';
     const rawLimit = parseInt(searchParams.get('limit') || '50', 10);
     const rawOffset = parseInt(searchParams.get('offset') || '0', 10);
     const limit = Math.min(Math.max(1, Number.isNaN(rawLimit) ? 50 : rawLimit), 500);
@@ -36,6 +40,9 @@ export async function GET(request: NextRequest) {
       const statuses = status.split(',').map((s) => s.trim()).filter(Boolean);
       if (statuses.length === 1) { whereClauses.push('ps.status = ?'); params.push(statuses[0]); }
       else if (statuses.length > 1) { whereClauses.push('ps.status IN (' + statuses.map(() => '?').join(',') + ')'); params.push(...statuses); }
+    }
+    if (latestPerSlot) {
+      whereClauses.push('ps.id NOT IN (SELECT resubmission_of_id FROM photo_submissions WHERE resubmission_of_id IS NOT NULL)');
     }
     const whereClause = 'WHERE ' + whereClauses.join(' AND ');
     params.push(limit, offset);

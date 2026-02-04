@@ -6,54 +6,124 @@ Photo capture and review system for fiber optic installation quality control. Mo
 
 ---
 
-## Features (overview)
+## Features
 
 | Area | Feature |
 |------|--------|
-| **Capture** | Geo-tagged photos (high-accuracy GPS); **multiple photos per checkpoint** (blue "+" for extra slots); offline support with IndexedDB; duplicate photo detection (blocks re-upload of same file). |
+| **Capture** | Geo-tagged photos (high-accuracy GPS). **Session = until logout**: first photo after login allowed; then **40 m rule** applies (photo only if ≤ 40 m from last capture; Admin can disable in Settings). **GPS during capture**: shows ±X m accuracy and distance from last photo (throttled updates). **Max GPS accuracy** (Admin): block capture if accuracy worse than ±X m (e.g. ±20 m). Multiple photos per checkpoint (blue "+"); offline with IndexedDB; duplicate detection. Geo + CloudExtel logo **burned on every photo** (uploads and resubmissions). |
 | **Gallery** | Browse photos by route/subsection; view full-size with metadata. |
 | **View photo** | Single photo view with comments, status, and actions (retake/resubmit when QC Required or NC). |
-| **Review** | Approve / QC Required / NC with **comment thread**; QC Required and NC require a comment; capturer can resubmit with comment; bulk actions with shared comment. See [Review workflow](docs/review-workflow-flowchart.md). |
+| **Review** | Approve / QC Required / NC with **comment thread**; QC Required and NC require a comment; capturer resubmits with comment. **Full resubmission history**: "View full history" timeline of all attempts (image, comments, status, timestamp). Mobile: compact icon-only buttons. Bulk actions with shared comment. |
 | **Map** | Route, subsection, and entity filters; photo locations on map. |
 | **Reports** | Route completion and related reports. |
-| **Admin** | User and role management (Engineer, Reviewer, Admin); subsection access. |
-| **Auth** | NextAuth with Azure AD; for local testing use cookie **dev-bypass-auth** = **true**. |
+| **Admin** | User and role management; subsection access. **Settings**: "Enforce 40 m capture distance" (toggle); **Max GPS accuracy (m)** — block capture if accuracy worse than ±X m (e.g. 20); leave empty for no limit. |
+| **Questions and Suggestions** | Dashboard: questions (AI via Google Gemini) or suggestions; stored in `user_feedback`. Requires `GEMINI_API_KEY` in `.env`. |
+| **Auth** | NextAuth with Azure AD; for local testing set cookie **dev-bypass-auth** = **true**. **Logout** clears capture session (next login = first photo allowed). |
 
-**DB and deployment:** See [docs/migration-and-deployment.md](docs/migration-and-deployment.md) for database setup, migrations, seed data, and server deployment. See [docs/scripts-reference.md](docs/scripts-reference.md) for all scripts.
+---
 
 ## Quick start
 
 ```bash
 npm install
-# Create .env with your values (see .env or env.example)
+# Create .env: NEXTAUTH_*, AZURE_AD_*, AWS_*, DATABASE_PATH. For Questions: GEMINI_API_KEY.
 npm run db:setup
 npm run db:seed-entities-checkpoints
 npm run dev
 ```
 
-Open **http://localhost:3001**. For local testing without Azure AD, set cookie **dev-bypass-auth** = **true** (DevTools → Application → Cookies). Ensure `NEXTAUTH_URL=http://localhost:3001` in `.env` when using port 3001.
+Open **http://localhost:3001**. For local testing without Azure AD, set cookie **dev-bypass-auth** = **true** (DevTools → Application → Cookies). Use `NEXTAUTH_URL=http://localhost:3001` in `.env` when using port 3001.
 
-If entities/checkpoints are missing or seed fails, see [Migration and deployment](docs/migration-and-deployment.md) (first-time setup, old DB migrations, `db:fix-schema`).
+**Stable dev:** The dev script uses **webpack** (not Turbopack) to reduce hang on refresh. For Turbopack use `npm run dev:turbo`.
+
+**Port in use:** If "address already in use :::3001", run **`npm run dev:fresh`** to free the port and start, or manually kill the process on 3001 then `npm run dev`.
+
+**Remote / server:** If the app runs on a remote machine, use the URL printed at start (e.g. `http://10.x.x.x:3001`) in your browser, not localhost.
+
+---
+
+## Database and migrations
+
+**New install (no DB yet):**
+
+```bash
+npm run db:setup
+npm run db:seed-entities-checkpoints
+```
+
+- **db:setup** — Creates schema from `scripts/create-schema.sql` (if new DB) and applies in-code migrations in `lib/db.ts`: `photo_submission_comments`, `subsection_allowed_emails`, `user_feedback`, `resubmission_of_id`, `app_settings`, **routes.length**, **subsections.length** (ERP sync), file fingerprint columns, etc. Idempotent.
+- **db:seed-entities-checkpoints** — Inserts entities and checkpoints from `scripts/create_entity_checkpoints.sql`. Idempotent.
+
+**Seed fails with "table checkpoints has no column named entity_id":** Old schema. Run `npm run db:fix-schema` then `npm run db:seed-entities-checkpoints`.
+
+**Existing DB (old schema with checkpoints.entity):**
+
+```bash
+npm run db:migrate
+npm run db:migrate:execution-stage
+npm run db:seed-entities-checkpoints
+```
+
+**Refresh seed only:** `npm run db:seed-entities-checkpoints`.
+
+| Goal | Command(s) |
+|------|------------|
+| New DB | `npm run db:setup` → `npm run db:seed-entities-checkpoints` |
+| Old DB (checkpoints.entity) | `npm run db:migrate` → `npm run db:migrate:execution-stage` → seed |
+| Seed fails (no entity_id) | `npm run db:fix-schema` |
+| Deploy (updates) | `./scripts/deploy-and-verify-on-server.sh` (runs db:setup + seed; set APP_PORT if not 13001) |
+
+---
+
+## Scripts reference
+
+| Script | Purpose |
+|--------|---------|
+| **db:setup** | Schema (create-schema.sql) + in-code migrations (lib/db.ts): app_settings, routes/subsections length, etc. Safe to re-run. |
+| **db:seed-entities-checkpoints** | Seed entities/checkpoints from create_entity_checkpoints.sql. |
+| **db:migrate** | Old schema → entities + entity_id + subsection_allowed_emails. |
+| **db:migrate:execution-stage** | Add execution_stage to checkpoints if missing. |
+| **db:migrate:resubmission** | Add resubmission_of_id to photo_submissions (also applied by db:setup). |
+| **db:fix-schema** | Drop/recreate checkpoints and entities, then seed (when seed fails with no entity_id). |
+| **db:generate-entity-checkpoints-sql** | Regenerate create_entity_checkpoints.sql from checkpoints_data.json. |
+| **test:db** | DB smoke test. |
+| **test:init-db** | Schema + seed (Node-only, no tsx). |
+| **test:api** / **test:api:full** | API tests (server must be running; use dev-bypass-auth cookie if no Azure AD). |
+| **deploy-and-verify-on-server.sh** | git pull, npm ci, build, db:setup, seed, PM2 restart, health check. |
+
+---
+
+## Review workflow (summary)
+
+1. **Capturer submits photo** → Status **Pending**.
+2. **Reviewer** (Review page): **Approve** (optional comment) or **QC Required** / **NC** (comment required).
+3. **If QC Required or NC:** Capturer sees feedback; **Retake** → comment modal → **Continue to camera** → take photo → resubmit (new image + comment; geo and logo burned). Status → **Pending**. Full history viewable via "View full history" (timeline of all attempts).
+4. Repeat until **Approved**.
+
+**Bulk:** Approve or QC Required/NC with one shared comment for multiple photos.
 
 ---
 
 ## Testing
 
 - **Build:** `npm run build`
-- **DB smoke test:** `npm run test:db` (or `node scripts/test-db.mjs`) — expects `✓ DB connection OK`
-- **DB init (Node-only):** `npm run test:init-db` (schema + seed; use when tsx fails)
-- **API tests (server must be running):**  
-  - Shell: `npm run test:api` or `bash scripts/test-api.sh http://127.0.0.1:3001`  
-  - Full flow: `npm run test:api:full` or `node scripts/test-api-full.mjs http://127.0.0.1:3001`
-
-For API tests without Azure AD, set cookie **dev-bypass-auth** = **true** on localhost.
-
-**Scripts:** `test` = build; `test:db` = DB smoke; `test:init-db` = init DB (Node); `test:api` = curl; `test:api:full` = full API flow (routes, photos, approvals, comments, resubmit).
+- **DB:** `npm run test:db` — expects "✓ DB connection OK"
+- **API (server running):** `npm run test:api` or `npm run test:api:full` (set dev-bypass-auth cookie if no Azure AD).
 
 ---
 
 ## Deployment
 
-**Full instructions:** [docs/migration-and-deployment.md](docs/migration-and-deployment.md) — first-time server setup, PORT (3001 vs 13001 behind Nginx), DB setup/seed, deploy script, Nginx, and troubleshooting.
+**First time on server (e.g. Digital Ocean):**
 
-**Short:** First time: clone → `npm ci && npm run build` → `.env` (NEXTAUTH_*, AZURE_AD_*, AWS_*, DATABASE_PATH, **PORT=13001** if Nginx proxies to 13001) → `mkdir -p data && npm run db:setup && npm run db:seed-entities-checkpoints` → `pm2 start ecosystem.config.js --name ce-df-photos` → `pm2 save && pm2 startup`. Subsequent deploys: `./scripts/deploy-and-verify-on-server.sh` (uses APP_PORT=13001 for health check; set APP_PORT=3001 if your app listens on 3001).
+1. Clone, install, build: `git clone <repo> CE_DF_Photos && cd CE_DF_Photos && npm ci && npm run build`
+2. Create **.env** (NEXTAUTH_*, AZURE_AD_*, AWS_*, DATABASE_PATH). Set **PORT=13001** if Nginx proxies to 13001.
+3. DB and app: `mkdir -p data && npm run db:setup && npm run db:seed-entities-checkpoints` (db:setup applies `scripts/create-schema.sql` and all in-code migrations in `lib/db.ts`, including routes/subsections length).
+4. Start: `pm2 start ecosystem.config.js --name ce-df-photos` then `pm2 save && pm2 startup`
+5. Configure Nginx to proxy to the app (e.g. 443 → `http://127.0.0.1:13001`). See `scripts/ce-df-photos.nginx.conf`.
+
+**Subsequent deploys:** Either (a) **on the server:** `cd /path/to/CE_DF_Photos && ./scripts/deploy-and-verify-on-server.sh`, or (b) **from your local machine:** push code, then run `SERVER=root@your-droplet-ip ./scripts/deploy-from-local.sh` (set `APP_PATH` if the app is not in `~/CE_DF_Photos` on the server). Uses APP_PORT=13001 for health check; set `APP_PORT=3001` if the app listens on 3001.
+
+**Verify:** `pm2 status` / `pm2 logs ce-df-photos`; `./scripts/verify-server.sh https://your-domain.com`; sign in and check Dashboard, Capture, Gallery, Review.
+
+**Deployment checklist (robust):** The deploy script (`./scripts/deploy-and-verify-on-server.sh`) ensures: (1) runs from app dir with `package.json` and `.git`; (2) `git pull` → `npm ci` → `npm run build` (exits on build failure); (3) `npm run db:setup` (schema from `create-schema.sql` + in-code migrations in `lib/db.ts`: `app_settings`, **routes.length**, **subsections.length**, photo_submission_comments, etc.); (4) `npm run db:seed-entities-checkpoints` (seed failure is non-fatal; fix with `npm run db:fix-schema` if needed); (5) PM2 restart and health check on APP_PORT. Set `APP_PORT=3001` if the app listens on 3001.

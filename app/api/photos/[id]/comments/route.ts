@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb, query } from '@/lib/db';
+import { sanitizeText, MAX_COMMENT_TEXT_LENGTH } from '@/lib/sanitize';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 
 export async function GET(
@@ -54,7 +55,7 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid photo id' }, { status: 400 });
     }
     const body = await request.json();
-    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    const text = sanitizeText(typeof body.text === 'string' ? body.text : '', MAX_COMMENT_TEXT_LENGTH);
     if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 });
 
     const db = getDb();

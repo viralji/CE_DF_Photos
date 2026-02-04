@@ -59,11 +59,27 @@ export function getDb(): Database.Database {
             row_id INTEGER PRIMARY KEY AUTOINCREMENT,
             route_id TEXT NOT NULL UNIQUE,
             route_name TEXT NOT NULL,
+            length REAL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
           )
         `);
       }
+    }
+    // routes.length and subsections.length (ERP sync)
+    try {
+      const routeCols = db.prepare("PRAGMA table_info(routes)").all() as { name: string }[];
+      const routeNames = new Set(routeCols.map((c) => c.name));
+      if (!routeNames.has('length')) {
+        db.exec('ALTER TABLE routes ADD COLUMN length REAL');
+      }
+      const subCols = db.prepare("PRAGMA table_info(subsections)").all() as { name: string }[];
+      const subNames = new Set(subCols.map((c) => c.name));
+      if (!subNames.has('length')) {
+        db.exec('ALTER TABLE subsections ADD COLUMN length REAL');
+      }
+    } catch {
+      // ignore
     }
 
     db.pragma('foreign_keys = ON');
@@ -163,6 +179,52 @@ export function getDb(): Database.Database {
     // Bootstrap first Admin
     try {
       db.prepare("UPDATE users SET role = 'Admin' WHERE email = 'v.shah@cloudextel.com'").run();
+    } catch {
+      // ignore
+    }
+    // user_feedback: questions and suggestions (Dashboard)
+    try {
+      const hasFeedback = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='user_feedback'").get();
+      if (!hasFeedback) {
+        db.exec(`
+          CREATE TABLE user_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            author_email TEXT NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('question', 'suggestion')),
+            content TEXT NOT NULL,
+            response TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        db.exec('CREATE INDEX IF NOT EXISTS idx_user_feedback_author ON user_feedback(author_email)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_user_feedback_created ON user_feedback(created_at)');
+      }
+    } catch {
+      // ignore
+    }
+    // resubmission_of_id: photo resubmission history (review workflow)
+    try {
+      const cols = db.prepare("PRAGMA table_info(photo_submissions)").all() as { name: string }[];
+      const hasResubmissionOf = cols.some((c) => c.name === 'resubmission_of_id');
+      if (!hasResubmissionOf) {
+        db.exec('ALTER TABLE photo_submissions ADD COLUMN resubmission_of_id INTEGER REFERENCES photo_submissions(id)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_photo_submissions_resubmission_of ON photo_submissions(resubmission_of_id)');
+      }
+    } catch {
+      // ignore
+    }
+    // app_settings: capture distance check and other app-level settings
+    try {
+      const hasAppSettings = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_settings'").get();
+      if (!hasAppSettings) {
+        db.exec(`
+          CREATE TABLE app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+          )
+        `);
+        db.prepare("INSERT INTO app_settings (key, value) VALUES ('capture_distance_check_enabled', '1')").run();
+      }
     } catch {
       // ignore
     }

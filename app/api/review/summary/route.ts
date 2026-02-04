@@ -21,7 +21,10 @@ export async function GET(request: NextRequest) {
         SUM(CASE WHEN ps.status = 'pending' THEN 1 ELSE 0 END) as pending_count,
         SUM(CASE WHEN ps.status = 'qc_required' THEN 1 ELSE 0 END) as qc_required_count,
         SUM(CASE WHEN ps.status = 'nc' THEN 1 ELSE 0 END) as nc_count
-       FROM photo_submissions ps
+       FROM (
+         SELECT * FROM photo_submissions
+         WHERE id NOT IN (SELECT resubmission_of_id FROM photo_submissions WHERE resubmission_of_id IS NOT NULL)
+       ) ps
        LEFT JOIN routes r ON ps.route_id = r.route_id
        LEFT JOIN subsections s ON ps.route_id = s.route_id AND ps.subsection_id = s.subsection_id
        WHERE ${placeholders}

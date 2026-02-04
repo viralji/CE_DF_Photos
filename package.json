@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev -p 3001 --webpack",
+    "dev:turbo": "next dev -p 3001",
+    "dev:fresh": "fuser -k 3001/tcp 2>/dev/null; sleep 2; next dev -p 3001 --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -15,6 +17,7 @@
     "db:setup": "tsx scripts/setup-db.ts",
     "db:migrate": "node scripts/migrate-entities-and-subsection-emails.mjs",
     "db:migrate:execution-stage": "node scripts/migrate-execution-stage.mjs",
+    "db:migrate:resubmission": "node scripts/migrate-resubmission-of.mjs",
     "db:seed-entities-checkpoints": "node scripts/run-create-entity-checkpoints.mjs",
     "db:fix-schema": "node scripts/fix-entities-checkpoints-schema.mjs",
     "db:generate-entity-checkpoints-sql": "node scripts/generate-entity-checkpoints-sql.mjs",
@@ -23,6 +26,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.978.0",
     "@aws-sdk/s3-request-presigner": "^3.978.0",
+    "@google/generative-ai": "^0.21.0",
     "@tanstack/react-query": "^5.90.20",
     "@types/better-sqlite3": "^7.6.13",
     "@types/leaflet": "^1.9.21",
@@ -35,7 +39,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^2.15.4",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "~4.0.0",

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { signOut } from 'next-auth/react';
+import { clearCaptureSession } from '@/lib/capture-session';
 import { useQuery } from '@tanstack/react-query';
 
 async function getPhotoCount() {
@@ -88,10 +89,19 @@ export default function DashboardPage() {
             <li>• Use the map view to see project coverage</li>
             <li>• Review pending photos regularly</li>
           </ul>
+          <Link
+            href="/feedback"
+            className="mt-4 w-full py-2.5 px-4 bg-blue-500 hover:bg-blue-600 text-white border border-blue-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center"
+          >
+            Questions & Suggestions
+          </Link>
           <button
             type="button"
-            onClick={() => signOut({ callbackUrl: '/signin' })}
-            className="mt-4 w-full py-2.5 px-4 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 rounded-lg text-sm font-medium transition-colors"
+            onClick={() => {
+              clearCaptureSession();
+              signOut({ callbackUrl: '/signin' });
+            }}
+            className="mt-2 w-full py-2.5 px-4 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 rounded-lg text-sm font-medium transition-colors"
           >
             Logout
           </button>

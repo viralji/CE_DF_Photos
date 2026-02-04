@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { PhotoImage } from '@/components/PhotoImage';
 
@@ -31,9 +32,53 @@ async function getCheckpoints() {
   return res.json();
 }
 
-export default function GalleryPage() {
+const GALLERY_ROUTE_KEY = 'routeId';
+const GALLERY_SUBSECTION_KEY = 'subsectionId';
+
+function GalleryPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [routeId, setRouteId] = useState<string | ''>('');
   const [subsectionId, setSubsectionId] = useState<string | ''>('');
+
+  // Restore route/subsection from URL when returning to gallery (e.g. after viewing a photo)
+  useEffect(() => {
+    const r = searchParams.get(GALLERY_ROUTE_KEY) ?? '';
+    const s = searchParams.get(GALLERY_SUBSECTION_KEY) ?? '';
+    setRouteId(r);
+    setSubsectionId(s);
+  }, [searchParams]);
+
+  const updateGalleryUrl = useCallback(
+    (route: string, subsection: string) => {
+      const params = new URLSearchParams();
+      if (route) params.set(GALLERY_ROUTE_KEY, route);
+      if (subsection) params.set(GALLERY_SUBSECTION_KEY, subsection);
+      const q = params.toString();
+      router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+    },
+    [pathname, router]
+  );
+
+  const handleRouteChange = useCallback(
+    (v: string | number | null) => {
+      const value = String(v ?? '');
+      setRouteId(value);
+      setSubsectionId('');
+      updateGalleryUrl(value, '');
+    },
+    [updateGalleryUrl]
+  );
+
+  const handleSubsectionChange = useCallback(
+    (v: string | number | null) => {
+      const value = String(v ?? '');
+      setSubsectionId(value);
+      updateGalleryUrl(routeId, value);
+    },
+    [routeId, updateGalleryUrl]
+  );
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
   const { data: subsectionsData } = useQuery({
@@ -88,7 +133,7 @@ export default function GalleryPage() {
               <SearchableSelect
                 options={routes.map((r) => ({ value: String(r.route_id), label: r.route_name || `Route ${r.route_id}` }))}
                 value={routeId}
-                onChange={(v) => { setRouteId(String(v ?? '')); setSubsectionId(''); }}
+                onChange={handleRouteChange}
                 placeholder="Select route..."
               />
             </div>
@@ -97,7 +142,7 @@ export default function GalleryPage() {
               <SearchableSelect
                 options={subsections.map((s) => ({ value: String(s.subsection_id), label: s.subsection_name || `Sub ${s.subsection_id}` }))}
                 value={subsectionId}
-                onChange={(v) => setSubsectionId(String(v ?? ''))}
+                onChange={handleSubsectionChange}
                 placeholder="Subsection..."
                 disabled={!routeId}
               />
@@ -125,8 +170,6 @@ export default function GalleryPage() {
                             <Link
                               key={photo.id}
                               href={`/view-photo/${photo.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               className="group relative aspect-square rounded-md overflow-hidden bg-slate-100 hover:ring-2 hover:ring-blue-400 transition-all"
                             >
                               <PhotoImage
@@ -170,5 +213,29 @@ export default function GalleryPage() {
         )}
       </main>
     </div>
+  );
+}
+
+function GalleryFallback() {
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-50">
+      <header className="flex-shrink-0 border-b border-slate-200 bg-white sticky top-0 z-40">
+        <div className="max-w-4xl mx-auto px-4 py-2 flex items-center gap-2">
+          <Link href="/dashboard" className="text-slate-600 hover:text-slate-800 p-1 -ml-1 rounded"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></Link>
+          <h1 className="text-base font-bold text-slate-900">Gallery</h1>
+        </div>
+      </header>
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-3 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
+      </main>
+    </div>
+  );
+}
+
+export default function GalleryPage() {
+  return (
+    <Suspense fallback={<GalleryFallback />}>
+      <GalleryPageContent />
+    </Suspense>
   );
 }

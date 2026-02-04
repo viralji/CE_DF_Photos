@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
+import {
+  sanitizeExecutionStage,
+  limitLength,
+  MAX_PHOTO_CATEGORY_LENGTH,
+  MAX_ROUTE_SUBSECTION_ID_LENGTH,
+  parsePositiveInt,
+} from '@/lib/sanitize';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 import { uploadToS3, getS3Key } from '@/lib/s3';
 import { compressImage, getImageMetadata, burnGeoOverlay } from '@/lib/image-compression';
@@ -56,21 +63,30 @@ export async function POST(request: NextRequest) {
     }
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const routeId = formData.get('routeId') as string;
-    const subsectionId = formData.get('subsectionId') as string;
-    const checkpointId = formData.get('checkpointId') as string;
-    const executionStage = formData.get('executionStage') as string;
+    const routeIdRaw = formData.get('routeId') as string;
+    const subsectionIdRaw = formData.get('subsectionId') as string;
+    const routeId = limitLength(String(routeIdRaw ?? ''), MAX_ROUTE_SUBSECTION_ID_LENGTH).trim() || '';
+    const subsectionId = limitLength(String(subsectionIdRaw ?? ''), MAX_ROUTE_SUBSECTION_ID_LENGTH).trim() || '';
+    const checkpointIdRaw = formData.get('checkpointId') as string;
+    const executionStageRaw = formData.get('executionStage') as string;
+    const executionStage = sanitizeExecutionStage(executionStageRaw);
     const photoTypeNumber = formData.get('photoTypeNumber') as string;
-    const photoCategory = formData.get('photoCategory') as string;
+    const photoCategoryRaw = formData.get('photoCategory') as string;
+    const photoCategoryTrimmed = typeof photoCategoryRaw === 'string' ? photoCategoryRaw.trim() : '';
+    const photoCategory = photoCategoryTrimmed ? limitLength(photoCategoryTrimmed, MAX_PHOTO_CATEGORY_LENGTH) : null;
     const latitude = formData.get('latitude') as string;
     const longitude = formData.get('longitude') as string;
     const locationAccuracy = formData.get('locationAccuracy') as string;
 
     if (!file || !routeId || !subsectionId || !executionStage) {
       return NextResponse.json(
-        { error: 'Missing required fields: routeId, subsectionId, and executionStage are required' },
+        { error: 'Missing required fields: routeId, subsectionId, and executionStage (B, O, or A) are required' },
         { status: 400 }
       );
+    }
+    const checkpointId = checkpointIdRaw ? parsePositiveInt(checkpointIdRaw) : null;
+    if (checkpointIdRaw && checkpointId === null) {
+      return NextResponse.json({ error: 'checkpointId must be a positive integer' }, { status: 400 });
     }
     const allowedKeys = getAllowedSubsectionKeys(session.user.email, session.role);
     const subsectionKey = `${String(routeId)}::${String(subsectionId)}`;
@@ -84,11 +100,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File is empty.' }, { status: 400 });
     }
 
+    // Duplicate check: use file metadata (size + lastModified). Runs only when both form fields fileSize and fileLastModified are present and valid; client must send them for new uploads. Size fallback from received file for storage only; lastModified is not read from server File (unreliable in Node/Next).
     const fileSizeRaw = formData.get('fileSize') as string | null;
     const fileLastModifiedRaw = formData.get('fileLastModified') as string | null;
-    const fileOriginalSize = fileSizeRaw ? parseInt(fileSizeRaw, 10) : null;
-    const fileLastModified = fileLastModifiedRaw ? parseInt(fileLastModifiedRaw, 10) : null;
-    if (fileOriginalSize != null && !Number.isNaN(fileOriginalSize) && fileLastModified != null && !Number.isNaN(fileLastModified)) {
+    let fileOriginalSize: number | null = fileSizeRaw != null && fileSizeRaw !== '' ? parseInt(fileSizeRaw, 10) : null;
+    const fileLastModified: number | null = fileLastModifiedRaw != null && fileLastModifiedRaw !== '' ? parseInt(fileLastModifiedRaw, 10) : null;
+    if (fileOriginalSize == null || Number.isNaN(fileOriginalSize)) fileOriginalSize = file.size;
+    if (fileOriginalSize != null && fileLastModified != null) {
       const dup = getDb()
         .prepare(
           `SELECT r.route_name, s.subsection_name, e.name AS entity_name, c.checkpoint_name
@@ -109,10 +127,12 @@ export async function POST(request: NextRequest) {
         const msg = `Photo already uploaded for ${route} - ${section} - ${entity} - ${checkpoint}.`;
         return NextResponse.json({ error: msg }, { status: 400 });
       }
+    } else if (fileOriginalSize != null && fileLastModified == null) {
+      console.debug('Skipping duplicate check: fileLastModified not provided.');
     }
 
-    const entity = (photoCategory || 'Unknown').trim();
-    const photoIndex = photoTypeNumber ? parseInt(photoTypeNumber, 10) : 1;
+    const entity = (photoCategory && photoCategory.trim()) ? photoCategory.trim() : 'Unknown';
+    const photoIndex = parsePositiveInt(photoTypeNumber) ?? 1;
     let entityCode = to3CharCode(entity);
     let checkpointCode = to3CharCode(entity);
     try {
@@ -128,9 +148,8 @@ export async function POST(request: NextRequest) {
         if (r.checkpoint_code) checkpointCodeById.set(r.id, r.checkpoint_code);
       }
       if (entityCodeByEntityName.size > 0) entityCode = entityCodeByEntityName.get(entity) ?? entityCode;
-      if (checkpointId) {
-        const cid = parseInt(checkpointId, 10);
-        checkpointCode = checkpointCodeById.get(cid) ?? uniqueCheckpointCodes(rows.map((r) => ({ id: r.id, checkpoint_name: r.checkpoint_name }))).get(cid) ?? checkpointCode;
+      if (checkpointId != null) {
+        checkpointCode = checkpointCodeById.get(checkpointId) ?? uniqueCheckpointCodes(rows.map((r) => ({ id: r.id, checkpoint_name: r.checkpoint_name }))).get(checkpointId) ?? checkpointCode;
       }
       if (entityCodeByEntityName.size === 0) {
         const entityCodeMap = uniqueEntityCodes(rows.map((r) => ({ entity: r.entity || '' })));
@@ -204,7 +223,7 @@ export async function POST(request: NextRequest) {
     ).run(
       String(routeId),
       String(subsectionId),
-      checkpointId ? parseInt(checkpointId, 10) : null,
+      checkpointId ?? null,
       userId,
       executionStage,
       photoIndex,

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb, query } from '@/lib/db';
+import { sanitizeText, MAX_COMMENT_TEXT_LENGTH } from '@/lib/sanitize';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
-import { uploadToS3, getS3Key, deleteFromS3 } from '@/lib/s3';
-import { compressImage, getImageMetadata } from '@/lib/image-compression';
+import { uploadToS3, getS3Key } from '@/lib/s3';
+import { compressImage, getImageMetadata, burnGeoOverlay } from '@/lib/image-compression';
+import { reverseGeocode, formatLocationForBurn } from '@/lib/geocode';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -50,7 +52,7 @@ export async function POST(
 
     const db = getDb();
     const photo = db.prepare(
-      'SELECT id, route_id, subsection_id, checkpoint_id, execution_stage, photo_type_number, filename, s3_key, status FROM photo_submissions WHERE id = ?'
+      'SELECT id, route_id, subsection_id, checkpoint_id, execution_stage, photo_type_number, photo_category, s3_key, status FROM photo_submissions WHERE id = ?'
     ).get(photoId) as {
       id: number;
       route_id: string;
@@ -58,7 +60,7 @@ export async function POST(
       checkpoint_id: number | null;
       execution_stage: string;
       photo_type_number: number | null;
-      filename: string;
+      photo_category: string | null;
       s3_key: string;
       status: string;
     } | undefined;
@@ -77,7 +79,11 @@ export async function POST(
     }
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const comment = (formData.get('comment') as string)?.trim() ?? '';
+    const comment = sanitizeText((formData.get('comment') as string) ?? '', MAX_COMMENT_TEXT_LENGTH);
+    const latitude = formData.get('latitude') as string;
+    const longitude = formData.get('longitude') as string;
+    const locationAccuracy = formData.get('locationAccuracy') as string;
+    
     if (!file || typeof file.size !== 'number' || file.size === 0) {
       return NextResponse.json({ error: 'file is required' }, { status: 400 });
     }
@@ -115,35 +121,97 @@ export async function POST(
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const compressedBuffer = await compressImage(buffer, { quality: 85 });
-    const metadata = await getImageMetadata(compressedBuffer);
+    let compressedBuffer = await compressImage(buffer, { quality: 85 });
+    let metadata = await getImageMetadata(compressedBuffer);
+    
+    // Burn geo overlay if location data is available
+    const lat = latitude ? parseFloat(latitude) : null;
+    const lng = longitude ? parseFloat(longitude) : null;
+    const captureDate = new Date();
+    const istTimestampDisplay = captureDate.toLocaleString('en-IN', { 
+      timeZone: 'Asia/Kolkata', 
+      dateStyle: 'short', 
+      timeStyle: 'medium' 
+    }) + ' IST';
+    
+    if (lat != null && lng != null && metadata.width && metadata.height) {
+      const { place, state } = await reverseGeocode(lat, lng);
+      const locationBurn = formatLocationForBurn(place, state);
+      
+      compressedBuffer = await burnGeoOverlay(compressedBuffer, {
+        width: metadata.width,
+        height: metadata.height,
+        latitude: lat,
+        longitude: lng,
+        accuracy: locationAccuracy ? parseFloat(locationAccuracy) : undefined,
+        timestamp: istTimestampDisplay,
+        location: locationBurn ?? undefined,
+      });
+      metadata = await getImageMetadata(compressedBuffer);
+    }
+    
     const format = typeof metadata.format === 'string' ? metadata.format : 'jpeg';
 
     await uploadToS3(s3Key, compressedBuffer, `image/${format}`);
-    try {
-      await deleteFromS3(photo.s3_key);
-    } catch (s3Err) {
-      console.error('S3 delete old key error:', s3Err);
-    }
-
     const s3Url = `https://${process.env.AWS_S3_BUCKET_NAME || 'ce-df-photos'}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
     const now = new Date().toISOString();
-    db.prepare(
-      `UPDATE photo_submissions SET
-        s3_key = ?, s3_url = ?, filename = ?, file_size = ?, width = ?, height = ?, format = ?,
-        status = 'pending', reviewer_id = NULL, reviewed_at = NULL, updated_at = ?
-       WHERE id = ?`
-    ).run(s3Key, s3Url, filename, compressedBuffer.length, metadata.width, metadata.height, format, now, photoId);
 
-    if (comment) {
-      const userRow = db.prepare('SELECT id, name FROM users WHERE email = ?').get(session.user.email) as { id: number; name: string | null } | undefined;
-      db.prepare(
-        'INSERT INTO photo_submission_comments (photo_submission_id, user_id, author_email, author_name, created_at, comment_text) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(photoId, userRow?.id ?? null, session.user.email, session.user.name ?? userRow?.name ?? null, now, comment);
+    const userSelectStmt = db.prepare('SELECT id FROM users WHERE email = ?');
+    const userResult = userSelectStmt.get(session.user.email) as { id: number } | undefined;
+    let userId: number;
+    if (!userResult) {
+      const userInsertStmt = db.prepare('INSERT INTO users (email, name, role) VALUES (?, ?, ?)');
+      const insertResult = userInsertStmt.run(session.user.email, session.user.name ?? '', 'field_worker');
+      userId = Number(insertResult.lastInsertRowid);
+    } else {
+      userId = userResult.id;
     }
 
-    const updated = db.prepare('SELECT id, status, filename, s3_url, updated_at FROM photo_submissions WHERE id = ?').get(photoId);
-    return NextResponse.json(updated);
+    db.prepare(
+      `INSERT INTO photo_submissions (
+        route_id, subsection_id, checkpoint_id, user_id, execution_stage, photo_type_number, photo_category,
+        resubmission_of_id, s3_key, s3_url, filename, file_size, width, height, format,
+        latitude, longitude, location_accuracy, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+    ).run(
+      photo.route_id,
+      photo.subsection_id,
+      photo.checkpoint_id,
+      userId,
+      photo.execution_stage,
+      photo.photo_type_number,
+      photo.photo_category ?? null,
+      photoId,
+      s3Key,
+      s3Url,
+      filename,
+      compressedBuffer.length,
+      metadata.width ?? null,
+      metadata.height ?? null,
+      format,
+      lat,
+      lng,
+      locationAccuracy ? parseFloat(locationAccuracy) : null,
+      now,
+      now,
+    );
+
+    const newRow = db.prepare('SELECT id, status, filename, s3_url, created_at, resubmission_of_id FROM photo_submissions ORDER BY id DESC LIMIT 1').get() as {
+      id: number;
+      status: string;
+      filename: string;
+      s3_url: string;
+      created_at: string;
+      resubmission_of_id: number | null;
+    };
+    const newPhotoId = newRow.id;
+
+    const userRow = db.prepare('SELECT id, name FROM users WHERE email = ?').get(session.user.email) as { id: number; name: string | null } | undefined;
+    db.prepare(
+      'INSERT INTO photo_submission_comments (photo_submission_id, user_id, author_email, author_name, created_at, comment_text) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(newPhotoId, userRow?.id ?? null, session.user.email, session.user.name ?? userRow?.name ?? null, now, comment);
+
+    return NextResponse.json(newRow);
   } catch (error: unknown) {
     console.error('Resubmit error:', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });

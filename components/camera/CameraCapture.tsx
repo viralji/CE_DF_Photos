@@ -10,23 +10,56 @@ const GEO_OPTIONS: PositionOptions = {
   maximumAge: 0,
 };
 
+const EARTH_RADIUS_METERS = 6.371e6;
+
+function distanceMeters(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number }
+): number {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const dlat = toRad(b.latitude - a.latitude);
+  const dlon = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const s = Math.sin(dlat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlon / 2) ** 2;
+  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(s));
+}
+
 type Props = {
   onCapture: (file: File, geo: GeoCoords) => void;
   onCancel: () => void;
   disabled?: boolean;
+  lastCaptureLocation?: { latitude: number; longitude: number } | null;
+  maxDistanceMeters?: number;
+  distanceCheckEnabled?: boolean;
+  onDistanceExceeded?: (distanceMeters: number) => void;
+  maxAccuracyMeters?: number | null;
+  onAccuracyExceeded?: (accuracyMeters: number) => void;
 };
 
-export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
+export function CameraCapture({
+  onCapture,
+  onCancel,
+  disabled,
+  lastCaptureLocation = null,
+  maxDistanceMeters = 40,
+  distanceCheckEnabled = false,
+  onDistanceExceeded,
+  maxAccuracyMeters = null,
+  onAccuracyExceeded,
+}: Props) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const bestPositionRef = useRef<{ latitude: number; longitude: number; accuracy?: number; at: number } | null>(null);
+  const latestPositionRef = useRef<{ latitude: number; longitude: number; at: number } | null>(null);
   const [error, setError] = useState('');
   const [mode, setMode] = useState<'choice' | 'live'>('choice');
   const [capturing, setCapturing] = useState(false);
   const [geoStatus, setGeoStatus] = useState<'idle' | 'getting' | 'ready' | 'poor'>('idle');
+  const [displayDistanceMeters, setDisplayDistanceMeters] = useState<number | null>(null);
 
   const getGeo = useCallback((): Promise<GeoCoords> => {
     return new Promise((resolve) => {
@@ -64,14 +97,20 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
     setGeoStatus('getting');
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
+        const now = Date.now();
         const accuracy = pos.coords.accuracy ?? Infinity;
+        latestPositionRef.current = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          at: now,
+        };
         const prev = bestPositionRef.current;
         if (prev == null || (prev.accuracy != null && accuracy < prev.accuracy)) {
           bestPositionRef.current = {
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             accuracy: pos.coords.accuracy ?? undefined,
-            at: Date.now(),
+            at: now,
           };
           setGeoStatus(accuracy <= 50 ? 'ready' : 'poor');
         }
@@ -85,9 +124,24 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
         watchIdRef.current = null;
       }
       bestPositionRef.current = null;
+      latestPositionRef.current = null;
       setGeoStatus('idle');
+      setDisplayDistanceMeters(null);
     };
   }, [mode]);
+
+  // Throttled distance-from-last display: update at most every 1.5s to avoid re-renders on every GPS tick
+  useEffect(() => {
+    if (mode !== 'live' || !lastCaptureLocation) return;
+    setDisplayDistanceMeters(null);
+    const interval = setInterval(() => {
+      const latest = latestPositionRef.current;
+      if (!latest || Date.now() - latest.at > 10000) return;
+      const d = Math.round(distanceMeters(lastCaptureLocation, latest));
+      setDisplayDistanceMeters((prev) => (prev === d ? prev : d));
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [mode, lastCaptureLocation]);
 
   useLayoutEffect(() => {
     if (mode !== 'live' || !streamRef.current) return;
@@ -109,9 +163,16 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
       }
       setError('');
       const geo = await getGeo();
+      if (distanceCheckEnabled && lastCaptureLocation && geo && onDistanceExceeded) {
+        const dist = distanceMeters(lastCaptureLocation, geo);
+        if (dist > maxDistanceMeters) {
+          onDistanceExceeded(dist);
+          return;
+        }
+      }
       onCapture(file, geo);
     },
-    [getGeo, onCapture]
+    [getGeo, onCapture, distanceCheckEnabled, lastCaptureLocation, maxDistanceMeters, onDistanceExceeded]
   );
 
   const startLiveCamera = useCallback(async () => {
@@ -154,6 +215,32 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
         }
       }
 
+      if (distanceCheckEnabled && lastCaptureLocation && onDistanceExceeded) {
+        const latest = latestPositionRef.current;
+        const useLatest = latest && Date.now() - latest.at < 5000;
+        const checkPos = useLatest
+          ? { latitude: latest.latitude, longitude: latest.longitude }
+          : geo;
+        if (checkPos) {
+          const dist = distanceMeters(lastCaptureLocation, checkPos);
+          if (dist > maxDistanceMeters) {
+            onDistanceExceeded(dist);
+            setCapturing(false);
+            return;
+          }
+        }
+      }
+
+      if (maxAccuracyMeters != null && onAccuracyExceeded) {
+        const accuracy = geo?.accuracy;
+        if (accuracy == null || accuracy > maxAccuracyMeters) {
+          if (accuracy != null) onAccuracyExceeded(accuracy);
+          else onAccuracyExceeded(Infinity);
+          setCapturing(false);
+          return;
+        }
+      }
+
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -181,7 +268,7 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
     } finally {
       setCapturing(false);
     }
-  }, [capturing, getGeo, onCapture, stopStream]);
+  }, [capturing, getGeo, onCapture, stopStream, distanceCheckEnabled, lastCaptureLocation, maxDistanceMeters, onDistanceExceeded, maxAccuracyMeters, onAccuracyExceeded]);
 
   const handleCameraClick = useCallback(() => {
     setError('');
@@ -214,13 +301,16 @@ export function CameraCapture({ onCapture, onCancel, disabled }: Props) {
           {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
         </div>
         <div className="flex-shrink-0 p-4 bg-black/80 flex flex-col gap-2">
-          {geoStatus === 'ready' && bestPositionRef.current?.accuracy != null && (
-            <p className="text-xs text-green-400 text-center">GPS ±{Math.round(bestPositionRef.current.accuracy)} m</p>
+          {bestPositionRef.current?.accuracy != null && (
+            <p className={`text-xs text-center ${geoStatus === 'ready' ? 'text-green-400' : 'text-amber-400'}`}>
+              GPS ±{Math.round(bestPositionRef.current.accuracy)} m
+              {lastCaptureLocation && displayDistanceMeters != null && (
+                <span className="block mt-0.5">{displayDistanceMeters < 1000 ? `${displayDistanceMeters} m` : `${(displayDistanceMeters / 1000).toFixed(1)} km`} from last photo</span>
+              )}
+              {geoStatus === 'poor' && ' — move to open sky for better accuracy'}
+            </p>
           )}
-          {geoStatus === 'poor' && (
-            <p className="text-xs text-amber-400 text-center">Move to open sky for better GPS accuracy</p>
-          )}
-          {geoStatus === 'getting' && (
+          {geoStatus === 'getting' && bestPositionRef.current?.accuracy == null && (
             <p className="text-xs text-slate-400 text-center">Getting location…</p>
           )}
           <button

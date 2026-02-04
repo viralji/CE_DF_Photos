@@ -82,7 +82,7 @@ export function SearchableSelect({
       />
       {isOpen && (
         <ul
-          className="absolute z-[1000] mt-1 w-full max-h-48 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg py-1 text-sm"
+          className="absolute z-[1100] mt-1 w-full max-h-48 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg py-1 text-sm"
           role="listbox"
         >
           {filtered.length === 0 ? (
