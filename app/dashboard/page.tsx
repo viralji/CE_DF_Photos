@@ -7,10 +7,10 @@ import { clearCaptureSession } from '@/lib/capture-session';
 import { useQuery } from '@tanstack/react-query';
 
 async function getPhotoCount() {
-  const res = await fetch('/api/photos?limit=500', { credentials: 'include' });
+  const res = await fetch('/api/photos/count', { credentials: 'include' });
   if (!res.ok) return { count: 0 };
   const data = await res.json();
-  return { count: data.photos?.length ?? 0 };
+  return { count: data.count ?? 0 };
 }
 
 async function getMe() {

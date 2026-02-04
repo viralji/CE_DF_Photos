@@ -13,13 +13,32 @@ export async function PATCH(request: NextRequest) {
     }
     const body = await request.json().catch(() => ({}));
     const db = getDb();
-    const out: { captureDistanceCheckEnabled?: boolean; maxGpsAccuracyMeters?: number | null } = {};
-    const captureDistanceCheckEnabled = typeof body.captureDistanceCheckEnabled === 'boolean' ? body.captureDistanceCheckEnabled : undefined;
-    if (captureDistanceCheckEnabled !== undefined) {
-      db.prepare(
-        "INSERT INTO app_settings (key, value) VALUES ('capture_distance_check_enabled', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-      ).run(captureDistanceCheckEnabled ? '1' : '0');
-      out.captureDistanceCheckEnabled = captureDistanceCheckEnabled;
+    const out: { captureDistanceCheckEnabled?: boolean; maxCaptureDistanceMeters?: number | null; maxGpsAccuracyMeters?: number | null } = {};
+    if (body.hasOwnProperty('maxCaptureDistanceMeters')) {
+      const raw = body.maxCaptureDistanceMeters;
+      if (raw !== null && raw !== undefined) {
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n <= 0) {
+          return NextResponse.json({ error: 'maxCaptureDistanceMeters must be a positive number or null' }, { status: 400 });
+        }
+        db.prepare(
+          "INSERT INTO app_settings (key, value) VALUES ('max_capture_distance_meters', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        ).run(String(n));
+        db.prepare(
+          "INSERT INTO app_settings (key, value) VALUES ('capture_distance_check_enabled', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        ).run();
+        out.maxCaptureDistanceMeters = n;
+        out.captureDistanceCheckEnabled = true;
+      } else {
+        db.prepare(
+          "INSERT INTO app_settings (key, value) VALUES ('max_capture_distance_meters', '') ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        ).run();
+        db.prepare(
+          "INSERT INTO app_settings (key, value) VALUES ('capture_distance_check_enabled', '0') ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        ).run();
+        out.maxCaptureDistanceMeters = null;
+        out.captureDistanceCheckEnabled = false;
+      }
     }
     if (body.hasOwnProperty('maxGpsAccuracyMeters')) {
       const raw = body.maxGpsAccuracyMeters;
@@ -40,7 +59,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
     if (Object.keys(out).length === 0) {
-      return NextResponse.json({ error: 'Provide captureDistanceCheckEnabled and/or maxGpsAccuracyMeters' }, { status: 400 });
+      return NextResponse.json({ error: 'Provide maxCaptureDistanceMeters and/or maxGpsAccuracyMeters' }, { status: 400 });
     }
     return NextResponse.json(out);
   } catch (error: unknown) {

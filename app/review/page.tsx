@@ -571,7 +571,16 @@ function ReviewPageContent() {
     staleTime: 60_000,
   });
 
+  const { data: entitiesData } = useQuery({
+    queryKey: ['entities'],
+    queryFn: async () => (await fetch('/api/entities')).json(),
+    staleTime: 60_000,
+    enabled: !!selected,
+  });
+
   const isAdmin = (meData?.role ?? '') === 'Admin';
+  const entities = (entitiesData?.entities ?? []) as { id: number; name: string; code: string; display_order: number }[];
+  const entityOrder = useMemo(() => entities.map((e) => e.name), [entities]);
 
   const threadComments = (commentsData?.comments ?? []) as CommentRow[];
 
@@ -676,6 +685,19 @@ function ReviewPageContent() {
     });
     return map;
   }, [photos]);
+
+  const sortedEntityEntries = useMemo(() => {
+    const entries = Object.entries(groupedByEntity);
+    if (entityOrder.length === 0) return entries;
+    return entries.sort(([nameA], [nameB]) => {
+      const iA = entityOrder.indexOf(nameA);
+      const iB = entityOrder.indexOf(nameB);
+      if (iA === -1 && iB === -1) return nameA.localeCompare(nameB);
+      if (iA === -1) return 1;
+      if (iB === -1) return -1;
+      return iA - iB;
+    });
+  }, [groupedByEntity, entityOrder]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -918,8 +940,8 @@ function ReviewPageContent() {
               </div>
             )}
 
-            {/* Photos by Entity & Checkpoint */}
-            {Object.entries(groupedByEntity).map(([entity, checkpoints]) => (
+            {/* Photos by Entity & Checkpoint (entity order matches admin display_order) */}
+            {sortedEntityEntries.map(([entity, checkpoints]) => (
               <div key={entity} className="bg-white border border-slate-200 rounded-lg p-4 mb-4">
                 <h2 className="text-base font-bold text-slate-900 mb-3">{entity}</h2>
                 {Object.entries(checkpoints).map(([checkpoint, photoList]) => (

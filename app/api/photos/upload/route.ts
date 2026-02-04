@@ -16,6 +16,9 @@ import { to3CharCode, uniqueCheckpointCodes, uniqueEntityCodes } from '@/lib/pho
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+/** Allow up to 60s for upload + compression + S3 (concurrent users). */
+export const maxDuration = 60;
+
 /** IST date YYYYMMDD and time HHMMSS (Asia/Kolkata). */
 function istDateAndTime(at: Date = new Date()): { dateStr: string; timeStr: string } {
   const opts: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };

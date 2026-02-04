@@ -89,7 +89,8 @@ npm run db:seed-entities-checkpoints
 | **test:db** | DB smoke test. |
 | **test:init-db** | Schema + seed (Node-only, no tsx). |
 | **test:api** / **test:api:full** | API tests (server must be running; use dev-bypass-auth cookie if no Azure AD). |
-| **deploy-and-verify-on-server.sh** | git pull, npm ci, build, db:setup, seed, PM2 restart, health check. |
+| **deploy-and-verify-on-server.sh** | On server: git pull, npm ci, build, db:setup, seed, PM2 restart, health check. |
+| **deploy-from-local.sh** | From local: git push, then SSH to server and run deploy-and-verify-on-server.sh. Set `SERVER=root@host`. |
 
 ---
 
@@ -127,3 +128,10 @@ npm run db:seed-entities-checkpoints
 **Verify:** `pm2 status` / `pm2 logs ce-df-photos`; `./scripts/verify-server.sh https://your-domain.com`; sign in and check Dashboard, Capture, Gallery, Review.
 
 **Deployment checklist (robust):** The deploy script (`./scripts/deploy-and-verify-on-server.sh`) ensures: (1) runs from app dir with `package.json` and `.git`; (2) `git pull` → `npm ci` → `npm run build` (exits on build failure); (3) `npm run db:setup` (schema from `create-schema.sql` + in-code migrations in `lib/db.ts`: `app_settings`, **routes.length**, **subsections.length**, photo_submission_comments, etc.); (4) `npm run db:seed-entities-checkpoints` (seed failure is non-fatal; fix with `npm run db:fix-schema` if needed); (5) PM2 restart and health check on APP_PORT. Set `APP_PORT=3001` if the app listens on 3001.
+
+---
+
+## Docs
+
+- **`docs/scaling-and-concurrency.md`** — Concurrency for ~30–40 users (DB, PM2, Nginx, checklist).
+- **`docs/review-workflow-flowchart.png`** — Review workflow diagram.

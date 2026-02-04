@@ -49,7 +49,7 @@ export default function HomePage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">DF Photos</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">GIS & AI Enabled QC App</h1>
           <p className="text-slate-600 text-sm sm:text-base mb-6">Photo capture and quality control for fiber optic installation</p>
           <div className="grid grid-cols-2 gap-3 mb-8 text-left">
             {['Smart Capture', 'Map View', 'Review & Approve', 'Reports'].map((t) => (

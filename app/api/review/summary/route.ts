@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
        LEFT JOIN subsections s ON ps.route_id = s.route_id AND ps.subsection_id = s.subsection_id
        WHERE ${placeholders}
        GROUP BY ps.route_id, ps.subsection_id
-       ORDER BY r.route_name, s.subsection_name`,
+       ORDER BY r.route_name, s.route_id, s.subsection_id`,
       keyParams
     );
     return NextResponse.json({ summary: result.rows });

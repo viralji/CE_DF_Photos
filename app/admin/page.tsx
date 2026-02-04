@@ -1032,32 +1032,76 @@ export default function AdminPage() {
         {activeTab === 4 && (
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h2 className="font-semibold text-slate-900 text-sm mb-3">Capture rules</h2>
-          <p className="text-xs text-slate-500 mb-3">When enabled, users cannot take a photo if they are more than 40 m from their previous capture. Turn off temporarily if a user needs an exception.</p>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={meData?.captureDistanceCheckEnabled !== false}
-              onChange={async (e) => {
-                const enabled = e.target.checked;
-                try {
-                  const res = await fetch('/api/settings', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ captureDistanceCheckEnabled: enabled }),
-                  });
-                  if (!res.ok) throw new Error('Failed to update');
-                  await queryClient.invalidateQueries({ queryKey: ['me'] });
-                  scheduleMessageClear();
-                  setMessage(enabled ? '✓ 40 m distance check enabled.' : '✓ 40 m distance check disabled (exceptions allowed).');
-                } catch (err) {
-                  setMessage('❌ Failed to update setting.');
-                }
-              }}
-              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-slate-800">Enforce 40 m capture distance (disable for exceptions)</span>
-          </label>
-          <div className="mt-4 pt-4 border-t border-slate-200">
+
+          <div className="mb-4">
+            <p className="text-xs text-slate-500 mb-2">Enter maximum allowed distance between photos (m). If set, capture is blocked when the user is farther than this from their last photo. Leave empty or disable for no limit.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                key={`max-dist-${meData?.maxCaptureDistanceMeters ?? 'none'}`}
+                type="number"
+                min={1}
+                step={1}
+                placeholder="40"
+                defaultValue={meData?.maxCaptureDistanceMeters ?? ''}
+                id="admin-max-capture-distance"
+                className="w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  const el = document.getElementById('admin-max-capture-distance') as HTMLInputElement | null;
+                  const raw = el?.value?.trim();
+                  const val = raw === '' ? null : Math.floor(Number(raw));
+                  if (val !== null && (!Number.isFinite(val) || val <= 0)) {
+                    scheduleMessageClear();
+                    setMessage('❌ Enter a positive number or leave empty.');
+                    return;
+                  }
+                  try {
+                    const res = await fetch('/api/settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ maxCaptureDistanceMeters: val }),
+                    });
+                    if (!res.ok) throw new Error('Failed to update');
+                    await queryClient.invalidateQueries({ queryKey: ['me'] });
+                    scheduleMessageClear();
+                    setMessage(val != null ? `✓ Max distance between photos set to ${val} m.` : '✓ Distance limit disabled.');
+                  } catch (err) {
+                    setMessage('❌ Failed to update setting.');
+                  }
+                }}
+                className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const el = document.getElementById('admin-max-capture-distance') as HTMLInputElement | null;
+                  if (el) el.value = '';
+                  try {
+                    const res = await fetch('/api/settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ maxCaptureDistanceMeters: null }),
+                    });
+                    if (!res.ok) throw new Error('Failed to update');
+                    await queryClient.invalidateQueries({ queryKey: ['me'] });
+                    scheduleMessageClear();
+                    setMessage('✓ Distance limit disabled.');
+                  } catch (err) {
+                    setMessage('❌ Failed to update setting.');
+                  }
+                }}
+                className="px-3 py-1.5 border border-slate-300 text-slate-700 text-sm rounded hover:bg-slate-50"
+              >
+                Disable
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-200">
             <p className="text-xs text-slate-500 mb-2">Max GPS accuracy (m): block capture if accuracy is worse than ±X m. Leave empty or disable for no limit.</p>
             <div className="flex flex-wrap items-center gap-2">
               <input

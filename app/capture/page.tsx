@@ -81,7 +81,7 @@ export default function CapturePage() {
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
   const { data: meData } = useQuery({ queryKey: ['me'], queryFn: getMe });
-  const captureDistanceCheckEnabled = (meData?.captureDistanceCheckEnabled ?? true) as boolean;
+  const maxCaptureDistanceMeters = (meData?.maxCaptureDistanceMeters ?? null) as number | null;
   const maxGpsAccuracyMeters = (meData?.maxGpsAccuracyMeters ?? null) as number | null;
   const { data: subsectionsData } = useQuery({
     queryKey: ['subsections', routeId],
@@ -238,6 +238,8 @@ export default function CapturePage() {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('comment', commentToSend);
+        formData.append('fileSize', String(file.size));
+        formData.append('fileLastModified', String(file.lastModified));
         if (geo) {
           formData.append('latitude', String(geo.latitude));
           formData.append('longitude', String(geo.longitude));
@@ -374,8 +376,8 @@ export default function CapturePage() {
             </h2>
             <p id="distance-exceeded-desc" className="text-sm text-slate-600 mb-4">
               {distanceExceededValue != null
-                ? `You are about ${Math.round(distanceExceededValue)} m from your last capture. Distance must be 40 m or less to take a photo. Contact Admin to enable an exception.`
-                : 'You are more than 40 m from your last capture. You cannot take a photo. Contact Admin to enable exception.'}
+                ? `You are about ${Math.round(distanceExceededValue)} m from your last capture. Distance must be ${maxCaptureDistanceMeters ?? '?'} m or less to take a photo. Contact Admin to change the limit.`
+                : `You are farther than the allowed ${maxCaptureDistanceMeters ?? '?'} m from your last capture. You cannot take a photo. Contact Admin to change the limit.`}
             </p>
             <button
               type="button"
@@ -533,23 +535,35 @@ export default function CapturePage() {
                     const isLastInGroup = idx === groupRows.length - 1;
                     const photo = findPhotoForRow(row);
                     const hasPhoto = !!photo;
-                    const needsAttention = photo?.status === 'qc_required' || photo?.status === 'nc';
-                    const statusLabel = photo?.status === 'qc_required' ? 'QC Required' : photo?.status === 'nc' ? 'NC' : null;
+                    // Read status (API normalizes to lowercase; support STATUS from SQLite just in case)
+                    const photoAny = photo as { status?: string; STATUS?: string } | undefined;
+                    const statusVal = photoAny && (typeof photoAny.status === 'string' ? photoAny.status : typeof photoAny.STATUS === 'string' ? photoAny.STATUS : '');
+                    const rawStatus = typeof statusVal === 'string' ? statusVal.toLowerCase() : '';
+                    // Only show green when status is explicitly 'approved'; treat missing/unknown as pending (grey)
+                    const isApproved = rawStatus === 'approved';
+                    const isPending = rawStatus === 'pending' || (hasPhoto && rawStatus !== 'approved' && rawStatus !== 'qc_required' && rawStatus !== 'nc');
+                    const needsAttention = rawStatus === 'qc_required' || rawStatus === 'nc';
+                    const isNC = rawStatus === 'nc';
+                    const statusLabel = rawStatus === 'qc_required' ? 'QC Required' : rawStatus === 'nc' ? 'NC' : null;
+                    const rowBg =
+                      isApproved ? 'bg-green-50 border-l-green-400'
+                      : isPending ? 'bg-slate-100 border-l-slate-400'
+                      : rawStatus === 'qc_required' ? 'bg-amber-50 border-l-amber-400'
+                      : isNC ? 'bg-red-50 border-l-red-400'
+                      : 'bg-white border-l-slate-200 hover:bg-slate-50';
+                    const badgeBg =
+                      isApproved ? 'bg-green-500'
+                      : isPending ? 'bg-slate-500'
+                      : rawStatus === 'qc_required' ? 'bg-amber-500'
+                      : isNC ? 'bg-red-500'
+                      : 'bg-slate-300';
                     return (
                       <div
                         key={getRowKey(row)}
-                        className={`flex items-center gap-3 pl-3 pr-4 py-2 min-h-0 border-l-2 transition-colors ${
-                          hasPhoto && !needsAttention
-                            ? 'bg-green-50 border-l-green-400'
-                            : needsAttention
-                            ? 'bg-amber-50 border-l-amber-400'
-                            : 'bg-white border-l-slate-200 hover:bg-slate-50'
-                        }`}
+                        className={`flex items-center gap-3 pl-3 pr-4 py-2 min-h-0 border-l-2 transition-colors ${rowBg}`}
                       >
-                        <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-                          hasPhoto && !needsAttention ? 'bg-green-500' : needsAttention ? 'bg-amber-500' : 'bg-slate-300'
-                        }`}>
-                          {hasPhoto && !needsAttention ? (
+                        <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${badgeBg}`}>
+                          {isApproved ? (
                             <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
@@ -574,7 +588,7 @@ export default function CapturePage() {
                             {row.stage}
                             {row.photoTypeNumber > 1 ? ` #${row.photoTypeNumber}` : ''}
                           </span>
-                          {statusLabel && <span className="text-amber-700 text-[10px] font-medium">{statusLabel}</span>}
+                          {statusLabel && <span className={`text-[10px] font-medium ${isNC ? 'text-red-700' : 'text-amber-700'}`}>{statusLabel}</span>}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {hasPhoto && (
@@ -589,10 +603,10 @@ export default function CapturePage() {
                               </svg>
                             </button>
                           )}
-                          {needsAttention && (
+                          {needsAttention && photo && (
                             <button
                               onClick={() => setCommentModalPhotoId(photo.id)}
-                              className="inline-flex items-center gap-1 p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                              className={`inline-flex items-center gap-1 p-1.5 rounded transition-colors ${isNC ? 'text-red-600 hover:bg-red-50' : 'text-amber-600 hover:bg-amber-50'}`}
                               title="View reviewer feedback before retake"
                             >
                               <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -602,12 +616,14 @@ export default function CapturePage() {
                             </button>
                           )}
                           <button
-                            onClick={() => (needsAttention ? setResubmitCommentModal({ photoId: photo.id, row }) : openCamera(row, null))}
+                            onClick={() => (needsAttention && photo ? setResubmitCommentModal({ photoId: photo.id, row }) : openCamera(row, null))}
                             disabled={locationStatus !== 'granted' || (hasPhoto && !needsAttention)}
                             title={hasPhoto && !needsAttention ? 'Done' : needsAttention ? 'Retake' : 'Capture'}
                             className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-md transition-colors ${
                               hasPhoto && !needsAttention
                                 ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                : isNC
+                                ? 'bg-red-500 text-white hover:bg-red-600'
                                 : needsAttention
                                 ? 'bg-amber-500 text-white hover:bg-amber-600'
                                 : 'bg-blue-600 text-white hover:bg-blue-700'
@@ -666,8 +682,8 @@ export default function CapturePage() {
           }}
           disabled={locationStatus !== 'granted'}
           lastCaptureLocation={lastCaptureLocation}
-          maxDistanceMeters={40}
-          distanceCheckEnabled={captureDistanceCheckEnabled}
+          maxDistanceMeters={maxCaptureDistanceMeters ?? 40}
+          distanceCheckEnabled={maxCaptureDistanceMeters != null}
           onDistanceExceeded={(dist) => {
             setDistanceExceededValue(dist);
             setShowDistanceExceededPopup(true);

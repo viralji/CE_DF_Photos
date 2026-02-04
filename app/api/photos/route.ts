@@ -50,7 +50,13 @@ export async function GET(request: NextRequest) {
       'SELECT ps.*, r.route_name, s.subsection_name, e.name AS entity, c.checkpoint_name, u.email as user_email, u.name as user_name, rev.email as reviewer_email, rev.name as reviewer_name FROM photo_submissions ps LEFT JOIN routes r ON ps.route_id = r.route_id LEFT JOIN subsections s ON ps.route_id = s.route_id AND ps.subsection_id = s.subsection_id LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id LEFT JOIN entities e ON c.entity_id = e.id LEFT JOIN users u ON ps.user_id = u.id LEFT JOIN users rev ON ps.reviewer_id = rev.id ' + whereClause + ' ORDER BY ps.created_at DESC LIMIT ? OFFSET ?',
       params
     );
-    return NextResponse.json({ photos: result.rows });
+    // Normalize status to lowercase key so client always gets it (SQLite may return STATUS)
+    const photos = (result.rows as Record<string, unknown>[]).map((row) => {
+      const raw = row.status ?? row.STATUS ?? 'pending';
+      const status = typeof raw === 'string' ? raw.toLowerCase() : 'pending';
+      return { ...row, status };
+    });
+    return NextResponse.json({ photos });
   } catch (error: unknown) {
     console.error('Error fetching photos:', error);
     return NextResponse.json({ photos: [], error: (error as Error).message }, { status: 500 });

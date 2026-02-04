@@ -14,6 +14,6 @@ module.exports = {
     },
     autorestart: true,
     max_memory_restart: '1G',
-    watch: false
+    watch: false,
   }]
 };
