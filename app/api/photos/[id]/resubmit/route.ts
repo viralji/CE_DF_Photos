@@ -122,6 +122,11 @@ export async function POST(
       }
     }
 
+    const lat = latitude ? parseFloat(latitude) : null;
+    const lng = longitude ? parseFloat(longitude) : null;
+    const geocodePromise =
+      lat != null && lng != null ? reverseGeocode(lat, lng) : Promise.resolve({ place: null as string | null, state: null as string | null });
+
     // Get entity and checkpoint codes from checkpoint
     let entityCode = 'XXX';
     let checkpointCode = 'XXX';
@@ -153,22 +158,19 @@ export async function POST(
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     let compressedBuffer = await compressImage(buffer, { quality: 85 });
-    let metadata = await getImageMetadata(compressedBuffer);
-    
-    // Burn geo overlay if location data is available
-    const lat = latitude ? parseFloat(latitude) : null;
-    const lng = longitude ? parseFloat(longitude) : null;
+    const metadata = await getImageMetadata(compressedBuffer);
+
     const captureDate = new Date();
-    const istTimestampDisplay = captureDate.toLocaleString('en-IN', { 
-      timeZone: 'Asia/Kolkata', 
-      dateStyle: 'short', 
-      timeStyle: 'medium' 
+    const istTimestampDisplay = captureDate.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      dateStyle: 'short',
+      timeStyle: 'medium',
     }) + ' IST';
-    
+
     if (lat != null && lng != null && metadata.width && metadata.height) {
-      const { place, state } = await reverseGeocode(lat, lng);
+      const { place, state } = await geocodePromise;
       const locationBurn = formatLocationForBurn(place, state);
-      
+
       compressedBuffer = await burnGeoOverlay(compressedBuffer, {
         width: metadata.width,
         height: metadata.height,
@@ -178,9 +180,8 @@ export async function POST(
         timestamp: istTimestampDisplay,
         location: locationBurn ?? undefined,
       });
-      metadata = await getImageMetadata(compressedBuffer);
     }
-    
+
     const format = typeof metadata.format === 'string' ? metadata.format : 'jpeg';
 
     await uploadToS3(s3Key, compressedBuffer, `image/${format}`);

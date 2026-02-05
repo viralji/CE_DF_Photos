@@ -134,6 +134,13 @@ export async function POST(request: NextRequest) {
       console.debug('Skipping duplicate check: fileLastModified not provided.');
     }
 
+    const lat = latitude ? parseFloat(latitude) : null;
+    const lng = longitude ? parseFloat(longitude) : null;
+    const geocodePromise =
+      lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)
+        ? reverseGeocode(lat, lng)
+        : Promise.resolve({ place: null as string | null, state: null as string | null });
+
     const entity = (photoCategory && photoCategory.trim()) ? photoCategory.trim() : 'Unknown';
     const photoIndex = parsePositiveInt(photoTypeNumber) ?? 1;
     let entityCode = to3CharCode(entity);
@@ -182,14 +189,12 @@ export async function POST(request: NextRequest) {
     let metadata = await getImageMetadata(compressedBuffer);
     const format = typeof metadata.format === 'string' ? metadata.format : 'jpeg';
 
-    const lat = latitude ? parseFloat(latitude) : null;
-    const lng = longitude ? parseFloat(longitude) : null;
     const captureDate = new Date();
     const { dateStr, timeStr } = istDateAndTime(captureDate);
     const istTimestampDisplay = istDisplayForOverlay(captureDate);
 
     if (lat != null && lng != null && metadata.width && metadata.height) {
-      const { place, state } = await reverseGeocode(lat, lng);
+      const { place, state } = await geocodePromise;
       const locationBurn = formatLocationForBurn(place, state);
 
       compressedBuffer = await burnGeoOverlay(compressedBuffer, {
@@ -201,7 +206,6 @@ export async function POST(request: NextRequest) {
         timestamp: istTimestampDisplay,
         location: locationBurn ?? undefined,
       });
-      metadata = await getImageMetadata(compressedBuffer);
     }
 
     const extension = (file.name.split('.').pop() || 'jpg').toLowerCase().replace('jpeg', 'jpg');

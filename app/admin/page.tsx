@@ -1034,7 +1034,7 @@ export default function AdminPage() {
           <h2 className="font-semibold text-slate-900 text-sm mb-3">Capture rules</h2>
 
           <div className="mb-4">
-            <p className="text-xs text-slate-500 mb-2">Enter maximum allowed distance between photos (m). If set, capture is blocked when the user is farther than this from their last photo. Leave empty or disable for no limit.</p>
+            <p className="text-xs text-slate-500 mb-2">Enter maximum allowed distance (m). If set, capture is allowed only when the user is within this distance of the nearest existing photo in the subsection. The first photo in a subsection is always allowed. Leave empty or disable for no limit.</p>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 key={`max-dist-${meData?.maxCaptureDistanceMeters ?? 'none'}`}

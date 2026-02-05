@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { CameraCapture } from '@/components/camera/CameraCapture';
-import { loadLastCaptureLocation, saveLastCaptureLocation } from '@/lib/capture-session';
 
 const STAGE_MAP: Record<string, string> = { Before: 'B', Ongoing: 'O', After: 'A' };
 
@@ -73,7 +72,6 @@ export default function CapturePage() {
   const [resubmitCommentModal, setResubmitCommentModal] = useState<{ photoId: number; row: RequiredRow } | null>(null);
   const [resubmitCommentInput, setResubmitCommentInput] = useState('');
   const [resubmitCommentToSend, setResubmitCommentToSend] = useState('');
-  const [lastCaptureLocation, setLastCaptureLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [showDistanceExceededPopup, setShowDistanceExceededPopup] = useState(false);
   const [distanceExceededValue, setDistanceExceededValue] = useState<number | null>(null);
   const [showAccuracyExceededPopup, setShowAccuracyExceededPopup] = useState(false);
@@ -187,11 +185,18 @@ export default function CapturePage() {
     return order.map((entity) => [entity, map[entity]] as [string, RequiredRow[]]);
   }, [allRows]);
 
-  // Session = until logout. Restore last capture from localStorage so 40 m applies across refreshes/navigations.
-  useEffect(() => {
-    const stored = loadLastCaptureLocation();
-    if (stored) setLastCaptureLocation(stored);
-  }, []);
+  const subsectionPhotoLocations = useMemo(() => {
+    if (!routeId || !subsectionId || !photos.length) return [];
+    return photos
+      .filter(
+        (p): p is typeof p & { latitude: number; longitude: number } =>
+          typeof p.latitude === 'number' &&
+          typeof p.longitude === 'number' &&
+          Number.isFinite(p.latitude) &&
+          Number.isFinite(p.longitude)
+      )
+      .map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
+  }, [photos, routeId, subsectionId]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -281,30 +286,6 @@ export default function CapturePage() {
           return;
         }
         setMessage('Photo uploaded successfully!');
-        let loc: { latitude: number; longitude: number } | null = geo
-          ? { latitude: geo.latitude, longitude: geo.longitude }
-          : null;
-        if (!loc && typeof navigator !== 'undefined' && navigator.geolocation) {
-          try {
-            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-              navigator.geolocation.getCurrentPosition(resolve, reject, {
-                enableHighAccuracy: true,
-                maximumAge: 5000,
-                timeout: 8000,
-              });
-            });
-            loc = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            };
-          } catch {
-            // ignore
-          }
-        }
-        if (loc) {
-          setLastCaptureLocation(loc);
-          saveLastCaptureLocation(loc);
-        }
       }
       const elapsed = Date.now() - startTime;
       const minWait = Math.max(0, 1500 - elapsed);
@@ -376,8 +357,8 @@ export default function CapturePage() {
             </h2>
             <p id="distance-exceeded-desc" className="text-sm text-slate-600 mb-4">
               {distanceExceededValue != null
-                ? `You are about ${Math.round(distanceExceededValue)} m from your last capture. Distance must be ${maxCaptureDistanceMeters ?? '?'} m or less to take a photo. Contact Admin to change the limit.`
-                : `You are farther than the allowed ${maxCaptureDistanceMeters ?? '?'} m from your last capture. You cannot take a photo. Contact Admin to change the limit.`}
+                ? `You are about ${Math.round(distanceExceededValue)} m from the nearest existing photo in this subsection. Distance must be ${maxCaptureDistanceMeters ?? '?'} m or less to take a photo. Contact Admin to change the limit.`
+                : `You are farther than the allowed ${maxCaptureDistanceMeters ?? '?'} m from the nearest existing photo in this subsection. You cannot take a photo. Contact Admin to change the limit.`}
             </p>
             <button
               type="button"
@@ -681,7 +662,7 @@ export default function CapturePage() {
             setResubmitCommentToSend('');
           }}
           disabled={locationStatus !== 'granted'}
-          lastCaptureLocation={lastCaptureLocation}
+          referenceLocations={subsectionPhotoLocations}
           maxDistanceMeters={maxCaptureDistanceMeters ?? 40}
           distanceCheckEnabled={maxCaptureDistanceMeters != null}
           onDistanceExceeded={(dist) => {
