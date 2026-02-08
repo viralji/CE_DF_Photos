@@ -119,7 +119,7 @@ npm run db:seed-entities-checkpoints
 
 1. Clone, install, build: `git clone <repo> CE_DF_Photos && cd CE_DF_Photos && npm ci && npm run build`
 2. Create **.env** (NEXTAUTH_*, AZURE_AD_*, AWS_*, DATABASE_PATH). Set **PORT=13001** if Nginx proxies to 13001.
-3. DB and app: `mkdir -p data && npm run db:setup && npm run db:seed-entities-checkpoints` (db:setup applies `scripts/create-schema.sql` and all in-code migrations in `lib/db.ts`, including routes/subsections length).
+3. DB and app: `mkdir -p data && npm run db:setup && npm run db:seed-entities-checkpoints` (db:setup applies `scripts/create-schema.sql` and all in-code migrations in `lib/db.ts`, including routes/subsections length). Subsections use unique key `(route_id, subsection_id)`; ERP report should include a **subsection_id** column for correct sync.
 4. Start: `pm2 start ecosystem.config.js --name ce-df-photos` then `pm2 save && pm2 startup`
 5. Configure Nginx to proxy to the app (e.g. 443 → `http://127.0.0.1:13001`). See `scripts/ce-df-photos.nginx.conf`.
 

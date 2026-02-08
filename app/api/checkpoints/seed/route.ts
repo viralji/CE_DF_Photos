@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionOrDevBypass } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import { to3CharCode } from '@/lib/photo-filename';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
     const total = db.prepare('SELECT COUNT(*) as c FROM checkpoints').get() as { c: number };
     return NextResponse.json({ inserted: count, total: total.c });
   } catch (error: unknown) {
-    console.error('Error seeding checkpoints:', error);
+    logError('Checkpoints seed', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

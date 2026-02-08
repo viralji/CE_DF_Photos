@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionOrDevBypass } from '@/lib/auth-helpers';
 import { query } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import { getSignedUrlForS3 } from '@/lib/s3';
 
 /**
@@ -29,7 +30,7 @@ export async function GET(
     const url = await getSignedUrlForS3(row.s3_key, 3600);
     return NextResponse.json({ url });
   } catch (error: unknown) {
-    console.error('Photo image-url error:', error);
+    logError('Photo image-url', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

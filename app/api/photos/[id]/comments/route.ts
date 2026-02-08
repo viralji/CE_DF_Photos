@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
+import { logError } from '@/lib/safe-log';
 import { getDb, query } from '@/lib/db';
 import { sanitizeText, MAX_COMMENT_TEXT_LENGTH } from '@/lib/sanitize';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
@@ -35,7 +36,7 @@ export async function GET(
     });
     return NextResponse.json({ comments });
   } catch (error: unknown) {
-    console.error('Comments GET error:', error);
+    logError('Comments GET', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
@@ -83,7 +84,7 @@ export async function POST(
     };
     return NextResponse.json(inserted, { status: 201 });
   } catch (error: unknown) {
-    console.error('Comments POST error:', error);
+    logError('Comments POST', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionOrDevBypass } from '@/lib/auth-helpers';
 import { query } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 
 /**
  * For each route: expected photos = (number of subsections) × (number of checkpoints).
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ routes });
   } catch (error: unknown) {
-    console.error('Route completion error:', error);
+    logError('Route completion', error);
     return NextResponse.json(
       { routes: [], error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 200 }

@@ -6,6 +6,7 @@ import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 import { uploadToS3, getS3Key } from '@/lib/s3';
 import { compressImage, getImageMetadata, burnGeoOverlay } from '@/lib/image-compression';
 import { reverseGeocode, formatLocationForBurn } from '@/lib/geocode';
+import { logError } from '@/lib/safe-log';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -105,8 +106,8 @@ export async function POST(
       const dup = db.prepare(
         `SELECT r.route_name, s.subsection_name, e.name AS entity_name, c.checkpoint_name
          FROM photo_submissions ps
-         LEFT JOIN routes r ON ps.route_id = r.route_id
-         LEFT JOIN subsections s ON ps.route_id = s.route_id AND ps.subsection_id = s.subsection_id
+         LEFT JOIN routes r ON CAST(ps.route_id AS TEXT) = r.route_id
+         LEFT JOIN subsections s ON CAST(ps.route_id AS TEXT) = s.route_id AND CAST(ps.subsection_id AS TEXT) = s.subsection_id
          LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id
          LEFT JOIN entities e ON c.entity_id = e.id
          WHERE ps.file_original_size = ? AND ps.file_last_modified = ?
@@ -193,7 +194,7 @@ export async function POST(
     let userId: number;
     if (!userResult) {
       const userInsertStmt = db.prepare('INSERT INTO users (email, name, role) VALUES (?, ?, ?)');
-      const insertResult = userInsertStmt.run(session.user.email, session.user.name ?? '', 'field_worker');
+      const insertResult = userInsertStmt.run(session.user.email, session.user.name ?? '', 'Engineer');
       userId = Number(insertResult.lastInsertRowid);
     } else {
       userId = userResult.id;
@@ -247,7 +248,7 @@ export async function POST(
 
     return NextResponse.json(newRow);
   } catch (error: unknown) {
-    console.error('Resubmit error:', error);
+    logError('Resubmit', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

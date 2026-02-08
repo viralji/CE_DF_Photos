@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole, type AllowedRole } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 
 const ALLOWED_ROLES: AllowedRole[] = ['Engineer', 'Reviewer', 'Admin'];
 
@@ -34,7 +35,7 @@ export async function PATCH(
     db.prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(role, userId);
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {
-    console.error('Error updating user role:', error);
+    logError('User PATCH', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
@@ -75,7 +76,7 @@ export async function DELETE(
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {
-    console.error('Error deleting user:', error);
+    logError('User DELETE', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

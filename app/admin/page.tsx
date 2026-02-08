@@ -112,6 +112,8 @@ export default function AdminPage() {
   const [editingCheckpointOrder, setEditingCheckpointOrder] = useState(0);
   const [editingCheckpointStage, setEditingCheckpointStage] = useState<string>('Ongoing');
   const [subsectionEmailsByKey, setSubsectionEmailsByKey] = useState<Record<string, string[]>>({});
+  const [emailFilterRouteId, setEmailFilterRouteId] = useState('');
+  const [emailFilterSubsectionKey, setEmailFilterSubsectionKey] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<AllowedRole>('Reviewer');
@@ -232,7 +234,9 @@ export default function AdminPage() {
         setBulkMessage(`❌ ${result.error || 'Upload failed'}`);
         return;
       }
-      setBulkMessage(`✓ Subsections: ${result.inserted} inserted of ${result.total}.${result.errors?.length ? ` ${result.errors.length} row(s) skipped.` : ''}`);
+      setBulkMessage(
+        `✓ Subsections: ${result.inserted} inserted, ${result.updated ?? 0} updated of ${result.total}.${result.errors?.length ? ` ${result.errors.length} row(s) skipped.` : ''}`
+      );
       queryClient.invalidateQueries({ queryKey: ['subsections'] });
     } catch (e) {
       setBulkMessage(`❌ ${(e as Error).message}`);
@@ -552,12 +556,12 @@ export default function AdminPage() {
           <h2 className="font-semibold text-slate-900 text-sm mb-3">Create Route</h2>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Route ID</label>
-              <input type="text" value={routeId} onChange={(e) => setRouteId(e.target.value)} placeholder="e.g. R001" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label htmlFor="admin-route-id" className="block text-xs font-medium text-slate-600 mb-1">Route ID</label>
+              <input id="admin-route-id" name="route_id" type="text" value={routeId} onChange={(e) => setRouteId(e.target.value)} placeholder="e.g. R001" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="flex-[2]">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Route Name</label>
-              <input type="text" value={routeName} onChange={(e) => setRouteName(e.target.value)} placeholder="e.g. Main Street" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label htmlFor="admin-route-name" className="block text-xs font-medium text-slate-600 mb-1">Route Name</label>
+              <input id="admin-route-name" name="route_name" type="text" value={routeName} onChange={(e) => setRouteName(e.target.value)} placeholder="e.g. Main Street" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="sm:self-end">
               <button onClick={createRoute} className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
@@ -603,8 +607,8 @@ export default function AdminPage() {
           <h2 className="font-semibold text-slate-900 text-sm mb-3">Create Subsection</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Route</label>
-              <select value={subRouteId} onChange={(e) => setSubRouteId(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <label htmlFor="admin-subsection-route" className="block text-xs font-medium text-slate-600 mb-1">Route</label>
+              <select id="admin-subsection-route" name="subsection_route" value={subRouteId} onChange={(e) => setSubRouteId(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Select route...</option>
                 {routes.map((r) => (
                   <option key={r.route_id} value={r.route_id}>{r.route_name || `Route ${r.route_id}`}</option>
@@ -612,12 +616,12 @@ export default function AdminPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Subsection ID</label>
-              <input type="text" value={subsectionId} onChange={(e) => setSubsectionId(e.target.value)} placeholder="e.g. S01" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label htmlFor="admin-subsection-id" className="block text-xs font-medium text-slate-600 mb-1">Subsection ID</label>
+              <input id="admin-subsection-id" name="subsection_id" type="text" value={subsectionId} onChange={(e) => setSubsectionId(e.target.value)} placeholder="e.g. S01" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Subsection Name</label>
-              <input type="text" value={subsectionName} onChange={(e) => setSubsectionName(e.target.value)} placeholder="e.g. Section A" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label htmlFor="admin-subsection-name" className="block text-xs font-medium text-slate-600 mb-1">Subsection Name</label>
+              <input id="admin-subsection-name" name="subsection_name" type="text" value={subsectionName} onChange={(e) => setSubsectionName(e.target.value)} placeholder="e.g. Section A" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
           <button onClick={createSubsection} className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
@@ -778,8 +782,8 @@ export default function AdminPage() {
             </table>
           </div>
           <form className="mt-2 flex flex-wrap gap-1.5 items-center" onSubmit={(ev) => { ev.preventDefault(); const n = (ev.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="new-entity-name"]'); const c = (ev.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="new-entity-code"]'); const code = (c?.value ?? '').trim().toUpperCase(); if (n?.value.trim()) { if (entities.some((o) => (o.code || '').toUpperCase() === code)) { setMessage('⚠️ Entity code already in use.'); scheduleMessageClear(); return; } createEntity(n.value.trim(), c?.value.trim() ?? ''); n.value = ''; if (c) c.value = ''; } }}>
-            <input name="new-entity-name" type="text" placeholder="Entity name" className="px-1.5 py-1 border border-slate-300 rounded text-xs w-36" />
-            <input name="new-entity-code" type="text" placeholder="Code (3)" maxLength={3} className="px-1.5 py-1 border border-slate-300 rounded text-xs w-14 font-mono" />
+            <input id="new-entity-name" name="new-entity-name" type="text" placeholder="Entity name" className="px-1.5 py-1 border border-slate-300 rounded text-xs w-36" />
+            <input id="new-entity-code" name="new-entity-code" type="text" placeholder="Code (3)" maxLength={3} className="px-1.5 py-1 border border-slate-300 rounded text-xs w-14 font-mono" />
             <button type="submit" className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">Add entity</button>
           </form>
         </div>
@@ -876,15 +880,15 @@ export default function AdminPage() {
                 <p className="text-xs text-slate-500 mt-3">{checkpoints.length} checkpoint{checkpoints.length !== 1 ? 's' : ''} total.</p>
               </div>
               <form className="mt-3 flex flex-wrap gap-2 items-end" onSubmit={(ev) => { ev.preventDefault(); const entityId = (ev.target as HTMLFormElement).querySelector<HTMLSelectElement>('[name="new-checkpoint-entity"]'); const nameEl = (ev.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="new-checkpoint-name"]'); const codeEl = (ev.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="new-checkpoint-code"]'); const stageEl = (ev.target as HTMLFormElement).querySelector<HTMLSelectElement>('[name="new-checkpoint-stage"]'); if (entityId?.value && nameEl?.value.trim()) { createCheckpoint(Number(entityId.value), nameEl.value.trim(), codeEl?.value.trim() ?? '', stageEl?.value ?? 'Ongoing'); nameEl.value = ''; if (codeEl) codeEl.value = ''; } }}>
-                <select name="new-checkpoint-entity" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-40" required>
+                <select id="new-checkpoint-entity" name="new-checkpoint-entity" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-40" required>
                   <option value="">Entity…</option>
                   {entities.map((ent) => (
                     <option key={ent.id} value={ent.id}>{ent.name}</option>
                   ))}
                 </select>
-                <input name="new-checkpoint-name" type="text" placeholder="Checkpoint name" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-48" required />
-                <input name="new-checkpoint-code" type="text" placeholder="Code (3 chars)" maxLength={3} className="px-2 py-1.5 border border-slate-300 rounded text-sm w-20 font-mono" />
-                <select name="new-checkpoint-stage" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-28">
+                <input id="new-checkpoint-name" name="new-checkpoint-name" type="text" placeholder="Checkpoint name" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-48" required />
+                <input id="new-checkpoint-code" name="new-checkpoint-code" type="text" placeholder="Code (3 chars)" maxLength={3} className="px-2 py-1.5 border border-slate-300 rounded text-sm w-20 font-mono" />
+                <select id="new-checkpoint-stage" name="new-checkpoint-stage" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-28">
                   {STAGE_OPTIONS.map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
@@ -902,8 +906,67 @@ export default function AdminPage() {
           <h2 className="font-semibold text-slate-900 text-sm mb-3">Subsection allowed emails</h2>
           <p className="text-xs text-slate-500 mb-3">Add allowed emails per subsection for future access control.</p>
           {subsections.length === 0 ? <p className="text-slate-500 text-sm">Create subsections above first.</p> : (
+            <>
+            <div className="flex flex-wrap gap-3 items-center mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div>
+                <label htmlFor="admin-email-filter-route" className="block text-xs font-medium text-slate-600 mb-0.5">Filter by route</label>
+                <select
+                  id="admin-email-filter-route"
+                  name="email_filter_route"
+                  value={emailFilterRouteId}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEmailFilterRouteId(v);
+                    if (emailFilterSubsectionKey) {
+                      const [r] = emailFilterSubsectionKey.split('::');
+                      if (v && r !== v) setEmailFilterSubsectionKey('');
+                    }
+                  }}
+                  className="px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All routes</option>
+                  {routes.map((r) => (
+                    <option key={r.route_id} value={r.route_id}>{r.route_name || `Route ${r.route_id}`}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="admin-email-filter-subsection" className="block text-xs font-medium text-slate-600 mb-0.5">Filter by subsection</label>
+                <select
+                  id="admin-email-filter-subsection"
+                  name="email_filter_subsection"
+                  value={emailFilterSubsectionKey}
+                  onChange={(e) => setEmailFilterSubsectionKey(e.target.value)}
+                  className="px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+                >
+                  <option value="">All subsections</option>
+                  {(emailFilterRouteId
+                    ? subsections.filter((s) => s.route_id === emailFilterRouteId)
+                    : subsections
+                  ).map((s) => {
+                    const key = s.route_id + '::' + s.subsection_id;
+                    return (
+                      <option key={key} value={key}>
+                        {s.subsection_name || s.subsection_id} ({s.route_id})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              {(emailFilterRouteId || emailFilterSubsectionKey) && (
+                <button
+                  type="button"
+                  onClick={() => { setEmailFilterRouteId(''); setEmailFilterSubsectionKey(''); }}
+                  className="self-end px-2 py-1.5 text-slate-600 hover:text-slate-800 text-sm border border-slate-300 rounded-lg hover:bg-slate-100"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
             <div className="space-y-3 max-h-[50vh] overflow-y-auto">
-              {subsections.map((s) => {
+              {subsections
+                .filter((s) => (!emailFilterRouteId || s.route_id === emailFilterRouteId) && (!emailFilterSubsectionKey || (s.route_id + '::' + s.subsection_id) === emailFilterSubsectionKey))
+                .map((s) => {
                 const key = s.route_id + '::' + s.subsection_id;
                 const emails = subsectionEmailsByKey[key] ?? [];
                 return (
@@ -916,7 +979,7 @@ export default function AdminPage() {
                           <button type="button" onClick={() => { const next = emails.filter((_, j) => j !== i); setSubsectionEmailsByKey((p) => ({ ...p, [key]: next })) }} className="text-slate-500 hover:text-red-600">x</button>
                         </span>
                       ))}
-                      <input type="email" placeholder="Add email" className="px-2 py-1 border border-slate-300 rounded text-xs w-40" data-subsection-key={key} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; const v = el.value.trim(); if (v) { const next = [...emails, v]; setSubsectionEmailsByKey((p) => ({ ...p, [key]: next })); el.value = ''; } } }} />
+                      <input id={`subsection-email-${key.replace(/::/g, '-')}`} name="subsection_email" type="email" placeholder="Add email" className="px-2 py-1 border border-slate-300 rounded text-xs w-40" data-subsection-key={key} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const el = e.target as HTMLInputElement; const v = el.value.trim(); if (v) { const next = [...emails, v]; setSubsectionEmailsByKey((p) => ({ ...p, [key]: next })); el.value = ''; } } }} />
                       <button type="button" onClick={() => { const input = document.querySelector(`input[data-subsection-key="${key}"]`) as HTMLInputElement | null; const v = input?.value?.trim(); if (v) { const next = [...(subsectionEmailsByKey[key] ?? []), v]; setSubsectionEmailsByKey((p) => ({ ...p, [key]: next })); if (input) input.value = ''; } }} className="px-2 py-1 bg-slate-100 text-slate-700 text-xs rounded hover:bg-slate-200">Add</button>
                       <button type="button" onClick={() => { const input = document.querySelector(`input[data-subsection-key="${key}"]`) as HTMLInputElement | null; const v = input?.value?.trim(); const toSave = v ? [...(subsectionEmailsByKey[key] ?? []), v] : (subsectionEmailsByKey[key] ?? []); saveSubsectionEmails(s.route_id, s.subsection_id, toSave); if (v) { setSubsectionEmailsByKey((p) => ({ ...p, [key]: toSave })); if (input) input.value = ''; } }} className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">Save</button>
                     </div>
@@ -924,6 +987,7 @@ export default function AdminPage() {
                 );
               })}
             </div>
+            </>
           )}
         </div>
         )}
@@ -937,8 +1001,10 @@ export default function AdminPage() {
             <h3 className="text-xs font-semibold text-slate-700 mb-2">Add user</h3>
             <div className="flex flex-wrap gap-2 items-end">
               <div className="min-w-[180px]">
-                <label className="block text-xs font-medium text-slate-600 mb-0.5">Email</label>
+                <label htmlFor="admin-user-email" className="block text-xs font-medium text-slate-600 mb-0.5">Email</label>
                 <input
+                  id="admin-user-email"
+                  name="user_email"
                   type="email"
                   value={newUserEmail}
                   onChange={(e) => setNewUserEmail(e.target.value)}
@@ -947,8 +1013,10 @@ export default function AdminPage() {
                 />
               </div>
               <div className="min-w-[120px]">
-                <label className="block text-xs font-medium text-slate-600 mb-0.5">Name</label>
+                <label htmlFor="admin-user-name" className="block text-xs font-medium text-slate-600 mb-0.5">Name</label>
                 <input
+                  id="admin-user-name"
+                  name="user_name"
                   type="text"
                   value={newUserName}
                   onChange={(e) => setNewUserName(e.target.value)}
@@ -957,8 +1025,10 @@ export default function AdminPage() {
                 />
               </div>
               <div className="min-w-[100px]">
-                <label className="block text-xs font-medium text-slate-600 mb-0.5">Role</label>
+                <label htmlFor="admin-user-role" className="block text-xs font-medium text-slate-600 mb-0.5">Role</label>
                 <select
+                  id="admin-user-role"
+                  name="user_role"
                   value={newUserRole}
                   onChange={(e) => setNewUserRole(e.target.value as AllowedRole)}
                   className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"

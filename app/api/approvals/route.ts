@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 
 const ACTIONS = ['approve', 'qc_required', 'nc'] as const;
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ success: true, processed: ids.length, errors: errors.length ? errors : undefined });
   } catch (error: unknown) {
-    console.error('Approval error:', error);
+    logError('Approval', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { query } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 
 type PhotoHistoryEntry = {
@@ -74,7 +75,7 @@ export async function GET(
     while (currentId !== null && history.length < MAX_DEPTH) {
       // Prevent circular references
       if (visited.has(currentId)) {
-        console.warn(`Circular reference detected in photo history at id ${currentId}`);
+        break; // circular reference
         break;
       }
       visited.add(currentId);
@@ -89,8 +90,8 @@ export async function GET(
           u.email as user_email, u.name as user_name,
           rev.email as reviewer_email, rev.name as reviewer_name
          FROM photo_submissions ps
-         LEFT JOIN routes r ON ps.route_id = r.route_id
-         LEFT JOIN subsections s ON ps.route_id = s.route_id AND ps.subsection_id = s.subsection_id
+         LEFT JOIN routes r ON CAST(ps.route_id AS TEXT) = r.route_id
+         LEFT JOIN subsections s ON CAST(ps.route_id AS TEXT) = s.route_id AND CAST(ps.subsection_id AS TEXT) = s.subsection_id
          LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id
          LEFT JOIN entities e ON c.entity_id = e.id
          LEFT JOIN users u ON ps.user_id = u.id
@@ -140,7 +141,7 @@ export async function GET(
 
     return NextResponse.json({ history: orderedHistory, count: orderedHistory.length });
   } catch (error: unknown) {
-    console.error('Error fetching photo history:', error);
+    logError('Photo history', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { handler } from '@/lib/auth';
+import { logError } from '@/lib/safe-log';
 
 async function handleWithJsonError(
   req: Request,
@@ -8,7 +9,7 @@ async function handleWithJsonError(
   try {
     return await handler(req, context);
   } catch (error) {
-    console.error('[next-auth] Route error:', error);
+    logError('NextAuth', error);
     return NextResponse.json(
       { error: 'AuthError', message: (error as Error).message },
       { status: 500 }

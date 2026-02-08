@@ -12,6 +12,7 @@ import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 import { uploadToS3, getS3Key } from '@/lib/s3';
 import { compressImage, getImageMetadata, burnGeoOverlay } from '@/lib/image-compression';
 import { reverseGeocode, formatLocationForBurn } from '@/lib/geocode';
+import { logError } from '@/lib/safe-log';
 import { to3CharCode, uniqueCheckpointCodes, uniqueEntityCodes } from '@/lib/photo-filename';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -114,8 +115,8 @@ export async function POST(request: NextRequest) {
         .prepare(
           `SELECT r.route_name, s.subsection_name, e.name AS entity_name, c.checkpoint_name
            FROM photo_submissions ps
-           LEFT JOIN routes r ON ps.route_id = r.route_id
-           LEFT JOIN subsections s ON ps.route_id = s.route_id AND ps.subsection_id = s.subsection_id
+           LEFT JOIN routes r ON CAST(ps.route_id AS TEXT) = r.route_id
+           LEFT JOIN subsections s ON CAST(ps.route_id AS TEXT) = s.route_id AND CAST(ps.subsection_id AS TEXT) = s.subsection_id
            LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id
            LEFT JOIN entities e ON c.entity_id = e.id
            WHERE ps.file_original_size = ? AND ps.file_last_modified = ?
@@ -130,9 +131,8 @@ export async function POST(request: NextRequest) {
         const msg = `Photo already uploaded for ${route} - ${section} - ${entity} - ${checkpoint}.`;
         return NextResponse.json({ error: msg }, { status: 400 });
       }
-    } else if (fileOriginalSize != null && fileLastModified == null) {
-      console.debug('Skipping duplicate check: fileLastModified not provided.');
     }
+    // When fileLastModified is missing, duplicate check is skipped (no log)
 
     const lat = latitude ? parseFloat(latitude) : null;
     const lng = longitude ? parseFloat(longitude) : null;
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
     let userId: number;
     const firstAdminEmail = 'v.shah@cloudextel.com';
     if (!userResult) {
-      const defaultRole = session.user.email === firstAdminEmail ? 'Admin' : 'Reviewer';
+      const defaultRole = session.user.email === firstAdminEmail ? 'Admin' : 'Engineer';
       const userInsertStmt = db.prepare('INSERT INTO users (email, name, role) VALUES (?, ?, ?)');
       const userInsertResult = userInsertStmt.run(session.user.email, session.user.name || '', defaultRole);
       userId = Number(userInsertResult.lastInsertRowid);
@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
     const inserted = db.prepare('SELECT * FROM photo_submissions ORDER BY id DESC LIMIT 1').get() as { id: number };
     return NextResponse.json({ id: inserted.id, filename, s3_url: s3Url });
   } catch (error: unknown) {
-    console.error('Upload error:', error);
+    logError('Upload', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

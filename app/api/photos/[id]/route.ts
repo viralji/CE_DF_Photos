@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
+import { logError } from '@/lib/safe-log';
 import { query } from '@/lib/db';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
 
@@ -31,7 +32,7 @@ export async function GET(
       return NextResponse.json({ error: 'Photo not found or access denied' }, { status: 404 });
     }
     const result = query(
-      'SELECT ps.*, r.route_name, s.subsection_name, e.name AS entity, c.checkpoint_name FROM photo_submissions ps LEFT JOIN routes r ON ps.route_id = r.route_id LEFT JOIN subsections s ON ps.route_id = s.route_id AND ps.subsection_id = s.subsection_id LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id LEFT JOIN entities e ON c.entity_id = e.id WHERE ps.id = ?',
+      'SELECT ps.*, r.route_name, s.subsection_name, e.name AS entity, c.checkpoint_name FROM photo_submissions ps LEFT JOIN routes r ON CAST(ps.route_id AS TEXT) = r.route_id LEFT JOIN subsections s ON CAST(ps.route_id AS TEXT) = s.route_id AND CAST(ps.subsection_id AS TEXT) = s.subsection_id LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id LEFT JOIN entities e ON c.entity_id = e.id WHERE ps.id = ?',
       [photoId]
     );
     const row = result.rows[0] as Record<string, unknown> | undefined;
@@ -46,7 +47,7 @@ export async function GET(
     });
     return NextResponse.json({ ...row, comments });
   } catch (error: unknown) {
-    console.error('Error fetching photo:', error);
+    logError('Photo GET', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
@@ -98,11 +99,11 @@ export async function DELETE(
       const { deleteFromS3 } = await import('@/lib/s3');
       await deleteFromS3(row.s3_key);
     } catch (s3Err) {
-      console.error('S3 delete error:', s3Err);
+      logError('Photo DELETE S3', s3Err);
     }
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    console.error('Error deleting photo:', error);
+    logError('Photo DELETE', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

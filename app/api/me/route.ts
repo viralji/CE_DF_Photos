@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
       maxGpsAccuracyMeters,
     });
   } catch (error: unknown) {
-    console.error('Error in /api/me:', error);
+    logError('Me', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

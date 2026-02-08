@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import * as XLSX from 'xlsx';
 
 const DEFAULT_REPORT_NAME = 'DF QC App Report';
@@ -33,24 +34,51 @@ function getCellNumber(row: Record<string, unknown>, keyVariants: string[]): num
   return Number.isFinite(n) ? n : null;
 }
 
-type SyncRow = { routeName: string; subsectionName: string; routeLength: number | null; subsectionLength: number | null };
+type SyncRow = {
+  routeName: string;
+  subsectionName: string;
+  subsectionId: string | null;
+  routeLength: number | null;
+  subsectionLength: number | null;
+};
 
 const UG_VARIANTS = ['UG Route', 'ug_route', 'UG_Route', 'Ug Route'];
 const SLD_VARIANTS = ['SLD Name', 'sld_name', 'SLD_Name', 'Sld Name'];
+const SUBSECTION_ID_VARIANTS = ['subsection_id', 'Subsection ID', 'Subsection Id', 'Subsection id', 'subsection id', 'SubsectionID'];
 const ROUTE_LENGTH_VARIANTS = ['route_length', 'Route Length', 'route length'];
 const SUBSECTION_LENGTH_VARIANTS = ['subsection_length', 'Subsection Length', 'subsection length'];
 
-function parseRowsFromJson(resultData: unknown[]): SyncRow[] {
+function rowToRecord(row: unknown, columns: string[] | null): Record<string, unknown> | null {
+  if (columns && Array.isArray(row) && row.length > 0) {
+    const r: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      if (col != null && row[i] !== undefined) r[col] = row[i];
+    });
+    return r;
+  }
+  if (row && typeof row === 'object' && !Array.isArray(row)) return row as Record<string, unknown>;
+  return null;
+}
+
+function parseRowsFromJson(resultData: unknown[], columns: string[] | null = null): SyncRow[] {
   const pairs: SyncRow[] = [];
-  for (const row of resultData) {
-    if (!row || typeof row !== 'object') continue;
-    const r = row as Record<string, unknown>;
+  let dataRows = resultData;
+  let headerColumns = columns;
+  if (!headerColumns && resultData.length > 0 && Array.isArray(resultData[0]) && resultData[0].length > 0) {
+    headerColumns = (resultData[0] as unknown[]).map((c) => String(c ?? ''));
+    dataRows = resultData.slice(1);
+  }
+  for (const row of dataRows) {
+    const r = rowToRecord(row, headerColumns);
+    if (!r) continue;
     const routeName = getCell(r, UG_VARIANTS);
     const subsectionName = getCell(r, SLD_VARIANTS);
+    const subsectionId = getCell(r, SUBSECTION_ID_VARIANTS);
     if (routeName && subsectionName) {
       pairs.push({
         routeName,
         subsectionName,
+        subsectionId: subsectionId ?? null,
         routeLength: getCellNumber(r, ROUTE_LENGTH_VARIANTS),
         subsectionLength: getCellNumber(r, SUBSECTION_LENGTH_VARIANTS),
       });
@@ -59,20 +87,38 @@ function parseRowsFromJson(resultData: unknown[]): SyncRow[] {
   return pairs;
 }
 
+function findHeaderRow(rows: unknown[][]): number {
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = rows[i] as string[];
+    const ugIdx = row.findIndex((h) => normalizeKey(String(h ?? '')) === 'ug_route');
+    const sldIdx = row.findIndex((h) => normalizeKey(String(h ?? '')) === 'sld_name');
+    if (ugIdx >= 0 && sldIdx >= 0) return i;
+  }
+  return -1;
+}
+
 function parseRowsFromSheet(rows: unknown[][]): SyncRow[] {
   if (rows.length < 2) return [];
-  const header = rows[0] as string[];
+  const headerRowIdx = findHeaderRow(rows);
+  if (headerRowIdx === -1) return [];
+  const header = rows[headerRowIdx] as string[];
   const ugIdx = header.findIndex((h) => normalizeKey(String(h ?? '')) === 'ug_route');
   const sldIdx = header.findIndex((h) => normalizeKey(String(h ?? '')) === 'sld_name');
+  const subsectionIdIdx = header.findIndex((h) => normalizeKey(String(h ?? '')) === 'subsection_id');
   const routeLengthIdx = header.findIndex((h) => normalizeKey(String(h ?? '')) === 'route_length');
   const subsectionLengthIdx = header.findIndex((h) => normalizeKey(String(h ?? '')) === 'subsection_length');
   if (ugIdx === -1 || sldIdx === -1) return [];
 
   const pairs: SyncRow[] = [];
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
     const row = rows[i] as unknown[];
     const routeName = row[ugIdx] != null ? String(row[ugIdx]).trim() : '';
     const subsectionName = row[sldIdx] != null ? String(row[sldIdx]).trim() : '';
+    const rawSubId = subsectionIdIdx >= 0 ? row[subsectionIdIdx] : undefined;
+    const subsectionId =
+      rawSubId != null && String(rawSubId).trim() !== ''
+        ? String(rawSubId).trim()
+        : null;
     if (routeName && subsectionName) {
       const routeLength = routeLengthIdx >= 0 && row[routeLengthIdx] != null && row[routeLengthIdx] !== ''
         ? (() => { const n = Number(row[routeLengthIdx]); return Number.isFinite(n) ? n : null; })()
@@ -80,7 +126,7 @@ function parseRowsFromSheet(rows: unknown[][]): SyncRow[] {
       const subsectionLength = subsectionLengthIdx >= 0 && row[subsectionLengthIdx] != null && row[subsectionLengthIdx] !== ''
         ? (() => { const n = Number(row[subsectionLengthIdx]); return Number.isFinite(n) ? n : null; })()
         : null;
-      pairs.push({ routeName, subsectionName, routeLength, subsectionLength });
+      pairs.push({ routeName, subsectionName, subsectionId, routeLength, subsectionLength });
     }
   }
   return pairs;
@@ -166,15 +212,17 @@ export async function POST(request: NextRequest) {
         );
       }
       let resultData: unknown[] | null = null;
+      let columns: string[] | null = null;
       if (Array.isArray(jsonResponse.result)) resultData = jsonResponse.result;
       else if (Array.isArray(jsonResponse)) resultData = jsonResponse;
       else if (Array.isArray(jsonResponse.message)) resultData = jsonResponse.message;
       else if (
         jsonResponse.message &&
-        typeof jsonResponse.message === 'object' &&
-        Array.isArray((jsonResponse.message as { result?: unknown[] }).result)
+        typeof jsonResponse.message === 'object'
       ) {
-        resultData = (jsonResponse.message as { result: unknown[] }).result;
+        const msg = jsonResponse.message as { result?: unknown[]; columns?: string[] };
+        if (Array.isArray(msg.result)) resultData = msg.result;
+        if (Array.isArray(msg.columns)) columns = msg.columns;
       }
       if (!resultData || resultData.length === 0) {
         return NextResponse.json(
@@ -185,7 +233,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      pairs = parseRowsFromJson(resultData);
+      pairs = parseRowsFromJson(resultData, columns);
     } else {
       const buffer = await response.arrayBuffer();
       if (!buffer || buffer.byteLength === 0) {
@@ -202,7 +250,11 @@ export async function POST(request: NextRequest) {
 
     if (pairs.length === 0) {
       return NextResponse.json(
-        { error: 'No data', message: 'Report has no rows with UG Route and SLD Name, or column names are missing.' },
+        {
+          error: 'No data',
+          message:
+            'Report has no rows with UG Route and SLD Name. Ensure columns exist: UG Route, SLD Name; optional: subsection_id, route_length, subsection_length. Column names are case-insensitive and spaces become underscores.',
+        },
         { status: 400 }
       );
     }
@@ -236,6 +288,13 @@ export async function POST(request: NextRequest) {
       routeByName.set(r.route_name.trim(), r.route_id);
     }
 
+    const subsectionByRouteAndId = new Map<string, { subsection_name: string; length: number | null }>();
+    for (const s of allSubsections) {
+      subsectionByRouteAndId.set(`${s.route_id}::${s.subsection_id}`, {
+        subsection_name: s.subsection_name,
+        length: s.length ?? null,
+      });
+    }
     const subsectionByRouteAndName = new Set<string>();
     for (const s of allSubsections) {
       subsectionByRouteAndName.add(`${s.route_id}::${s.subsection_name.trim()}`);
@@ -250,12 +309,16 @@ export async function POST(request: NextRequest) {
     const updateRouteLength = db.prepare(
       'UPDATE routes SET length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ?'
     );
+    const updateSubsection = db.prepare(
+      'UPDATE subsections SET subsection_name = ?, length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ? AND subsection_id = ?'
+    );
     const updateSubsectionLength = db.prepare(
       'UPDATE subsections SET length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ? AND subsection_id = ?'
     );
 
     let routesAdded = 0;
     let subsectionsAdded = 0;
+    let subsectionsUpdated = 0;
 
     const distinctRouteNames = [...new Set(pairs.map((p) => p.routeName))];
     for (const routeName of distinctRouteNames) {
@@ -272,14 +335,35 @@ export async function POST(request: NextRequest) {
       routesAdded++;
     }
 
-    for (const { routeName, subsectionName, subsectionLength } of pairs) {
+    for (const { routeName, subsectionName, subsectionId, subsectionLength } of pairs) {
       const routeId = routeByName.get(routeName);
       if (!routeId) continue;
-      const key = `${routeId}::${subsectionName}`;
+
+      if (subsectionId != null && subsectionId !== '') {
+        const key = `${routeId}::${subsectionId}`;
+        const existing = subsectionByRouteAndId.get(key);
+        if (existing) {
+          updateSubsection.run(
+            subsectionName,
+            subsectionLength != null ? subsectionLength : null,
+            routeId,
+            subsectionId
+          );
+          subsectionByRouteAndId.set(key, { subsection_name: subsectionName, length: subsectionLength ?? null });
+          subsectionsUpdated++;
+        } else {
+          insertSubsection.run(routeId, subsectionId, subsectionName, subsectionLength != null ? subsectionLength : null);
+          subsectionByRouteAndId.set(key, { subsection_name: subsectionName, length: subsectionLength ?? null });
+          subsectionsAdded++;
+        }
+        continue;
+      }
+
+      const keyByName = `${routeId}::${subsectionName}`;
       const existingSub = allSubsections.find(
         (s) => s.route_id === routeId && s.subsection_name.trim() === subsectionName.trim()
       );
-      if (subsectionByRouteAndName.has(key)) {
+      if (subsectionByRouteAndName.has(keyByName)) {
         if (existingSub) {
           updateSubsectionLength.run(subsectionLength != null ? subsectionLength : null, routeId, existingSub.subsection_id);
         }
@@ -287,19 +371,20 @@ export async function POST(request: NextRequest) {
       }
       const sid = String(nextSubsectionId++);
       insertSubsection.run(routeId, sid, subsectionName, subsectionLength != null ? subsectionLength : null);
-      subsectionByRouteAndName.add(key);
+      subsectionByRouteAndName.add(keyByName);
       subsectionsAdded++;
     }
 
     return NextResponse.json({
       success: true,
-      message: `Synced: ${routesAdded} route(s) and ${subsectionsAdded} subsection(s) added. Lengths updated for existing routes and subsections.`,
+      message: `Synced: ${routesAdded} route(s) added; ${subsectionsAdded} subsection(s) added, ${subsectionsUpdated} updated. Lengths updated for existing routes and subsections.`,
       routesAdded,
       subsectionsAdded,
+      subsectionsUpdated,
     });
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;
-    console.error('Sync ERPNext error:', error);
+    logError('Sync ERPNext', error);
     if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
       return NextResponse.json(
         { error: 'Connection failed', message: `Cannot connect to ERPNext server: ${err.message}` },

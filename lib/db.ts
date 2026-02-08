@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
+import { logError } from './safe-log';
 
 let db: Database.Database | null = null;
 
@@ -46,7 +47,7 @@ export function getDb(): Database.Database {
           } catch (error: unknown) {
             const err = error as { message?: string };
             if (!err.message?.includes('already exists')) {
-              console.error('Schema setup error:', err.message);
+              logError('Schema setup', err);
             }
           }
         }
@@ -248,9 +249,48 @@ export function query(sql: string, params: unknown[] = []): { rows: unknown[]; r
       };
     }
   } catch (error) {
-    console.error('Query error:', error);
+    logError('Query', error);
     throw error;
   }
+}
+
+/** Max OR conditions before using temp table (avoids SQLite "Expression tree is too large"). */
+const MAX_OR_KEYS = 200;
+
+/**
+ * Build WHERE fragment for (route_id, subsection_id) in allowed keys.
+ * Uses a temp table when keys.length > MAX_OR_KEYS to avoid expression tree depth limit.
+ * @param keys - "route_id::subsection_id" strings
+ * @param columnPrefix - e.g. "" for subsections, "ps." for photo_submissions
+ */
+export function buildAllowedKeysFilter(
+  keys: string[],
+  columnPrefix = ''
+): { whereClause: string; params: unknown[] } {
+  const r = columnPrefix ? `${columnPrefix}route_id` : 'route_id';
+  const s = columnPrefix ? `${columnPrefix}subsection_id` : 'subsection_id';
+  if (keys.length <= MAX_OR_KEYS) {
+    const conditions = keys.map(() => `(${r} = ? AND ${s} = ?)`);
+    return {
+      whereClause: '(' + conditions.join(' OR ') + ')',
+      params: keys.flatMap((k) => {
+        const [a, b] = k.split('::');
+        return [a, b];
+      }),
+    };
+  }
+  const database = getDb();
+  database.exec('CREATE TEMP TABLE IF NOT EXISTS _allowed_keys (route_id TEXT, subsection_id TEXT)');
+  database.prepare('DELETE FROM _allowed_keys').run();
+  const insert = database.prepare('INSERT INTO _allowed_keys (route_id, subsection_id) VALUES (?, ?)');
+  for (const k of keys) {
+    const [a, b] = k.split('::');
+    insert.run(a, b);
+  }
+  return {
+    whereClause: `(${r}, ${s}) IN (SELECT route_id, subsection_id FROM _allowed_keys)`,
+    params: [],
+  };
 }
 
 export function insertAndGet(sql: string, params: unknown[] = []): unknown {

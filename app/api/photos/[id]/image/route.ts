@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
+import { logError } from '@/lib/safe-log';
 import { query } from '@/lib/db';
 import { getObjectFromS3 } from '@/lib/s3';
 import { getAllowedSubsectionKeys } from '@/lib/subsection-access';
@@ -38,7 +39,7 @@ export async function GET(
       },
     });
   } catch (error: unknown) {
-    console.error('Photo image proxy error:', error);
+    logError('Photo image', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

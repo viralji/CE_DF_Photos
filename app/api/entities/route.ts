@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionOrDevBypass, getSessionWithRole } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import { to3CharCode } from '@/lib/photo-filename';
 
 export async function GET(request: NextRequest) {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     );
     return NextResponse.json({ entities: result.rows });
   } catch (error: unknown) {
-    console.error('Error fetching entities:', error);
+    logError('Entities GET', error);
     return NextResponse.json({ entities: [], error: (error as Error).message }, { status: 500 });
   }
 }
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     };
     return NextResponse.json({ entity: row });
   } catch (error: unknown) {
-    console.error('Error creating entity:', error);
+    logError('Entity POST', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

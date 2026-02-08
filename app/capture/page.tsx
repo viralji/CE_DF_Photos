@@ -464,8 +464,9 @@ export default function CapturePage() {
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Route</label>
+              <label htmlFor="capture-route" className="block text-xs font-medium text-slate-600 mb-1">Route</label>
               <SearchableSelect
+                id="capture-route"
                 options={routes.map((r) => ({ value: String(r.route_id), label: r.route_name || `Route ${r.route_id}` }))}
                 value={routeId}
                 onChange={(v) => { setRouteId(String(v ?? '')); setSubsectionId(''); }}
@@ -473,8 +474,9 @@ export default function CapturePage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Subsection</label>
+              <label htmlFor="capture-subsection" className="block text-xs font-medium text-slate-600 mb-1">Subsection</label>
               <SearchableSelect
+                id="capture-subsection"
                 options={subsections.map((s) => ({ value: String(s.subsection_id), label: s.subsection_name || `Sub ${s.subsection_id}` }))}
                 value={subsectionId}
                 onChange={(v) => setSubsectionId(String(v ?? ''))}

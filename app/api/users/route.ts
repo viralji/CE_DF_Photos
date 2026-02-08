@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole, type AllowedRole } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 
 const ALLOWED_ROLES: AllowedRole[] = ['Engineer', 'Reviewer', 'Admin'];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ users });
   } catch (error: unknown) {
-    console.error('Error fetching users:', error);
+    logError('Users GET', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    console.error('Error creating user:', error);
+    logError('User POST', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

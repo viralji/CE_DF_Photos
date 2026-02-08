@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -63,7 +64,7 @@ export async function PATCH(request: NextRequest) {
     }
     return NextResponse.json(out);
   } catch (error: unknown) {
-    console.error('Error in PATCH /api/settings:', error);
+    logError('Settings PATCH', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

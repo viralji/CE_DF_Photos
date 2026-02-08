@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import { to3CharCode } from '@/lib/photo-filename';
 
 function normalizeCode(code: string | undefined, name: string): string {
@@ -57,7 +58,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const row = db.prepare('SELECT id, name, code, display_order FROM entities WHERE id = ?').get(entityId);
     return NextResponse.json({ entity: row });
   } catch (error: unknown) {
-    console.error('Error updating entity:', error);
+    logError('Entity PATCH', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
@@ -84,7 +85,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     db.prepare('DELETE FROM entities WHERE id = ?').run(entityId);
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    console.error('Error deleting entity:', error);
+    logError('Entity DELETE', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

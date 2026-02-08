@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import { sanitizeText, MAX_FEEDBACK_CONTENT_LENGTH } from '@/lib/sanitize';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
       .all(session.user.email) as { id: number; type: string; content: string; response: string | null; created_at: string }[];
     return NextResponse.json({ feedback: rows });
   } catch (error: unknown) {
-    console.error('GET /api/feedback:', error);
+    logError('Feedback GET', error);
     return NextResponse.json({ error: 'Failed to load feedback' }, { status: 500 });
   }
 }
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       try {
         responseText = await getGeminiReply(content);
       } catch (geminiError: unknown) {
-        console.error('Gemini error:', geminiError);
+        logError('Feedback Gemini', geminiError);
         return NextResponse.json({ error: 'Failed to get answer' }, { status: 500 });
       }
       const result = db
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
     };
     return NextResponse.json(row);
   } catch (error: unknown) {
-    console.error('POST /api/feedback:', error);
+    logError('Feedback POST', error);
     return NextResponse.json({ error: 'Failed to submit feedback' }, { status: 500 });
   }
 }

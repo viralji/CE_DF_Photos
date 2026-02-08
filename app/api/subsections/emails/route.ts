@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionWithRole } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
     );
     return NextResponse.json({ emails: result.rows });
   } catch (error: unknown) {
-    console.error('Error fetching subsection emails:', error);
+    logError('Subsection emails GET', error);
     return NextResponse.json({ emails: [], error: (error as Error).message }, { status: 500 });
   }
 }
@@ -79,7 +80,7 @@ export async function PUT(request: NextRequest) {
     );
     return NextResponse.json({ emails: result.rows });
   } catch (error: unknown) {
-    console.error('Error updating subsection emails:', error);
+    logError('Subsection emails PUT', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

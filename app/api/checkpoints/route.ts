@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionOrDevBypass, getSessionWithRole } from '@/lib/auth-helpers';
 import { query, getDb } from '@/lib/db';
+import { logError } from '@/lib/safe-log';
 import { to3CharCode } from '@/lib/photo-filename';
 
 export async function GET(request: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     );
     return NextResponse.json({ checkpoints: result.rows });
   } catch (error: unknown) {
-    console.error('Error fetching checkpoints:', error);
+    logError('Checkpoints GET', error);
     return NextResponse.json({ checkpoints: [], error: (error as Error).message }, { status: 500 });
   }
 }
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
     const row = db.prepare('SELECT c.*, e.name AS entity, e.name AS entity_name, e.code AS entity_code FROM checkpoints c LEFT JOIN entities e ON c.entity_id = e.id WHERE c.id = ?').get(newId) as Record<string, unknown>;
     return NextResponse.json({ checkpoint: row });
   } catch (error: unknown) {
-    console.error('Error creating checkpoint:', error);
+    logError('Checkpoint POST', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
