@@ -52,25 +52,12 @@ npm run db:seed-entities-checkpoints
 ```
 
 - **db:setup** — Creates schema from `scripts/create-schema.sql` (if new DB) and applies in-code migrations in `lib/db.ts`: `photo_submission_comments`, `subsection_allowed_emails`, `user_feedback`, `resubmission_of_id`, `app_settings`, **routes.length**, **subsections.length** (ERP sync), file fingerprint columns, etc. Idempotent.
-- **db:seed-entities-checkpoints** — Inserts entities and checkpoints from `scripts/create_entity_checkpoints.sql`. Idempotent.
-
-**Seed fails with "table checkpoints has no column named entity_id":** Old schema. Run `npm run db:fix-schema` then `npm run db:seed-entities-checkpoints`.
-
-**Existing DB (old schema with checkpoints.entity):**
-
-```bash
-npm run db:migrate
-npm run db:migrate:execution-stage
-npm run db:seed-entities-checkpoints
-```
-
-**Refresh seed only:** `npm run db:seed-entities-checkpoints`.
+- **db:seed-entities-checkpoints** — Inserts entities and checkpoints from `checkpoints_data.json`. Idempotent.
 
 | Goal | Command(s) |
 |------|------------|
 | New DB | `npm run db:setup` → `npm run db:seed-entities-checkpoints` |
-| Old DB (checkpoints.entity) | `npm run db:migrate` → `npm run db:migrate:execution-stage` → seed |
-| Seed fails (no entity_id) | `npm run db:fix-schema` |
+| Refresh seed | `npm run db:seed-entities-checkpoints` |
 | Deploy (updates) | `./scripts/deploy-and-verify-on-server.sh` (runs db:setup + seed; set APP_PORT if not 13001) |
 
 ---
@@ -79,18 +66,11 @@ npm run db:seed-entities-checkpoints
 
 | Script | Purpose |
 |--------|---------|
-| **db:setup** | Schema (create-schema.sql) + in-code migrations (lib/db.ts): app_settings, routes/subsections length, etc. Safe to re-run. |
-| **db:seed-entities-checkpoints** | Seed entities/checkpoints from create_entity_checkpoints.sql. |
-| **db:migrate** | Old schema → entities + entity_id + subsection_allowed_emails. |
-| **db:migrate:execution-stage** | Add execution_stage to checkpoints if missing. |
-| **db:migrate:resubmission** | Add resubmission_of_id to photo_submissions (also applied by db:setup). |
-| **db:fix-schema** | Drop/recreate checkpoints and entities, then seed (when seed fails with no entity_id). |
-| **db:generate-entity-checkpoints-sql** | Regenerate create_entity_checkpoints.sql from checkpoints_data.json. |
-| **test:db** | DB smoke test. |
-| **test:init-db** | Schema + seed (Node-only, no tsx). |
-| **test:api** / **test:api:full** | API tests (server must be running; use dev-bypass-auth cookie if no Azure AD). |
+| **db:setup** | Schema (create-schema.sql) + in-code migrations (lib/db.ts). Safe to re-run. |
+| **db:seed-entities-checkpoints** | Seed entities/checkpoints from checkpoints_data.json (run after editing that file). |
 | **deploy-and-verify-on-server.sh** | On server: git pull, npm ci, build, db:setup, seed, PM2 restart, health check. |
 | **deploy-from-local.sh** | From local: git push, then SSH to server and run deploy-and-verify-on-server.sh. Set `SERVER=root@host`. |
+| **verify-server.sh** | Quick health check: `./scripts/verify-server.sh https://your-domain.com` |
 
 ---
 
@@ -102,14 +82,6 @@ npm run db:seed-entities-checkpoints
 4. Repeat until **Approved**.
 
 **Bulk:** Approve or QC Required/NC with one shared comment for multiple photos.
-
----
-
-## Testing
-
-- **Build:** `npm run build`
-- **DB:** `npm run test:db` — expects "✓ DB connection OK"
-- **API (server running):** `npm run test:api` or `npm run test:api:full` (set dev-bypass-auth cookie if no Azure AD).
 
 ---
 
@@ -125,9 +97,11 @@ npm run db:seed-entities-checkpoints
 
 **Subsequent deploys:** Either (a) **on the server:** `cd /path/to/CE_DF_Photos && ./scripts/deploy-and-verify-on-server.sh`, or (b) **from your local machine:** push code, then run `SERVER=root@your-droplet-ip ./scripts/deploy-from-local.sh` (set `APP_PATH` if the app is not in `~/CE_DF_Photos` on the server). Uses APP_PORT=13001 for health check; set `APP_PORT=3001` if the app listens on 3001.
 
+**Refresh seed on server:** After updating `checkpoints_data.json`, push code. On the server: `cd /path/to/CE_DF_Photos && git pull && npm run db:seed-entities-checkpoints && pm2 restart ce-df-photos`.
+
 **Verify:** `pm2 status` / `pm2 logs ce-df-photos`; `./scripts/verify-server.sh https://your-domain.com`; sign in and check Dashboard, Capture, Gallery, Review.
 
-**Deployment checklist (robust):** The deploy script (`./scripts/deploy-and-verify-on-server.sh`) ensures: (1) runs from app dir with `package.json` and `.git`; (2) `git pull` → `npm ci` → `npm run build` (exits on build failure); (3) `npm run db:setup` (schema from `create-schema.sql` + in-code migrations in `lib/db.ts`: `app_settings`, **routes.length**, **subsections.length**, photo_submission_comments, etc.); (4) `npm run db:seed-entities-checkpoints` (seed failure is non-fatal; fix with `npm run db:fix-schema` if needed); (5) PM2 restart and health check on APP_PORT. Set `APP_PORT=3001` if the app listens on 3001.
+**Deployment checklist:** The deploy script runs: git pull → npm ci → build → db:setup → db:seed-entities-checkpoints → PM2 restart → health check on APP_PORT (default 13001).
 
 ---
 

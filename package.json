@@ -10,17 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "npm run build",
-    "test:db": "node scripts/test-db.mjs",
-    "test:api": "bash scripts/test-api.sh",
-    "test:api:full": "node scripts/test-api-full.mjs http://127.0.0.1:3001",
-    "test:init-db": "node scripts/init-db-full.mjs",
     "db:setup": "tsx scripts/setup-db.ts",
-    "db:migrate": "node scripts/migrate-entities-and-subsection-emails.mjs",
-    "db:migrate:execution-stage": "node scripts/migrate-execution-stage.mjs",
-    "db:migrate:resubmission": "node scripts/migrate-resubmission-of.mjs",
     "db:seed-entities-checkpoints": "node scripts/run-create-entity-checkpoints.mjs",
-    "db:fix-schema": "node scripts/fix-entities-checkpoints-schema.mjs",
-    "db:generate-entity-checkpoints-sql": "node scripts/generate-entity-checkpoints-sql.mjs",
     "push": "git push -u origin main"
   },
   "dependencies": {

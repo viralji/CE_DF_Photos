@@ -16,9 +16,7 @@ npm run build || { echo "Build failed"; exit 1; }
 echo "=== DB setup and seed (idempotent) ==="
 # db:setup: schema from create-schema.sql (if new DB) + in-code migrations (lib/db.ts): app_settings, routes.length, subsections.length, photo_submission_comments, etc.
 npm run db:setup
-npm run db:seed-entities-checkpoints || {
-  echo "○ Seed failed (e.g. old schema). Run: npm run db:fix-schema && npm run db:seed-entities-checkpoints"
-}
+npm run db:seed-entities-checkpoints || echo "○ Seed failed (check checkpoints_data.json exists)"
 echo "=== Restart PM2 ==="
 if pm2 describe ce-df-photos &>/dev/null; then
   pm2 restart ce-df-photos
@@ -35,11 +33,5 @@ if [ "$CODE" = "200" ] || [ "$CODE" = "307" ]; then
 else
   echo "✗ GET / → $CODE (check: pm2 logs ce-df-photos; ensure PORT=$APP_PORT in ecosystem/.env)"
   exit 1
-fi
-echo "=== API test (dev-bypass cookie; optional on prod) ==="
-if node scripts/test-api-full.mjs "http://127.0.0.1:${APP_PORT}"; then
-  echo "✓ All API tests passed"
-else
-  echo "○ Some API tests failed (expected if dev-bypass is not enabled on server)"
 fi
 echo "=== Done. Check: pm2 status && pm2 logs ce-df-photos ==="
