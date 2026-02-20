@@ -181,7 +181,10 @@ export async function POST(request: NextRequest) {
       }
       if (response.status === 401 || response.status === 403) {
         return NextResponse.json(
-          { error: 'Authentication failed', message: 'Invalid API credentials or insufficient permissions.' },
+          {
+            error: 'Authentication failed',
+            message: errorMessage || 'Invalid API credentials or insufficient permissions.',
+          },
           { status: 401 }
         );
       }
