@@ -29,13 +29,39 @@ export async function GET(request: NextRequest) {
     } catch {
       // app_settings may not exist yet
     }
-    return NextResponse.json({
+    const payload: {
+      user: { email: string; name: string | null };
+      role: string;
+      captureDistanceCheckEnabled: boolean;
+      maxCaptureDistanceMeters: number | null;
+      maxGpsAccuracyMeters: number | null;
+      erpSyncIntervalMinutes?: number;
+      erpSyncLastRunAt?: string | null;
+      erpSyncLastRunMessage?: string | null;
+    } = {
       user: { email: session.user.email, name: session.user.name ?? null },
       role: session.role,
       captureDistanceCheckEnabled: maxCaptureDistanceMeters != null,
       maxCaptureDistanceMeters,
       maxGpsAccuracyMeters,
-    });
+    };
+    if (session.role === 'Admin') {
+      try {
+        const db = getDb();
+        const intervalRow = db.prepare("SELECT value FROM app_settings WHERE key = 'erp_sync_interval_minutes'").get() as { value: string } | undefined;
+        const lastAtRow = db.prepare("SELECT value FROM app_settings WHERE key = 'erp_sync_last_run_at'").get() as { value: string } | undefined;
+        const lastMsgRow = db.prepare("SELECT value FROM app_settings WHERE key = 'erp_sync_last_run_message'").get() as { value: string } | undefined;
+        const interval = intervalRow?.value != null && intervalRow.value !== '' ? parseInt(intervalRow.value, 10) : 0;
+        payload.erpSyncIntervalMinutes = Number.isFinite(interval) ? interval : 0;
+        payload.erpSyncLastRunAt = lastAtRow?.value?.trim() || null;
+        payload.erpSyncLastRunMessage = lastMsgRow?.value?.trim() ?? null;
+      } catch {
+        payload.erpSyncIntervalMinutes = 0;
+        payload.erpSyncLastRunAt = null;
+        payload.erpSyncLastRunMessage = null;
+      }
+    }
+    return NextResponse.json(payload);
   } catch (error: unknown) {
     logError('Me', error);
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });

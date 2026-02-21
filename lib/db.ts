@@ -264,6 +264,9 @@ export function getDb(): Database.Database {
       // ignore
     }
   }
+  setImmediate(() => {
+    import('./erp-sync-scheduler').then((m) => m.startErpSyncScheduler()).catch(() => {});
+  });
   return db;
 }
 

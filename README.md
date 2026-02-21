@@ -44,21 +44,24 @@ Open **http://localhost:3001**. For local testing without Azure AD, set cookie *
 
 ## Database and migrations
 
-**New install (no DB yet):**
+**New server (no DB yet):** Run `db:setup` then `db:seed-entities-checkpoints`. No other schema scripts are needed; `create-schema.sql` is applied when the DB is empty.
 
 ```bash
+mkdir -p data
 npm run db:setup
 npm run db:seed-entities-checkpoints
 ```
 
-- **db:setup** — Creates schema from `scripts/create-schema.sql` (if new DB) and applies in-code migrations in `lib/db.ts`: `photo_submission_comments`, `subsection_allowed_emails`, `user_feedback`, `resubmission_of_id`, `app_settings`, **routes.length**, **subsections.length** (ERP sync), file fingerprint columns, **entities.allowed_distance**, etc. Idempotent.
+**Existing server (updates):** The deploy script runs `db:setup` (which applies any missing migrations via `lib/db.ts`) and seed. No separate migration scripts required.
+
+- **db:setup** — If the DB is empty, applies `scripts/create-schema.sql`. Then runs in-code migrations in `lib/db.ts` (e.g. `entities.allowed_distance`, `routes.length`, `app_settings`, etc.). Idempotent.
 - **db:seed-entities-checkpoints** — Inserts entities and checkpoints from `checkpoints_data.json`. Idempotent.
 
 | Goal | Command(s) |
 |------|------------|
-| New DB | `npm run db:setup` → `npm run db:seed-entities-checkpoints` |
+| New server (no DB) | `npm run db:setup` → `npm run db:seed-entities-checkpoints` |
 | Refresh seed | `npm run db:seed-entities-checkpoints` |
-| Deploy (updates) | `./scripts/deploy-and-verify-on-server.sh` (runs db:setup + seed; set APP_PORT if not 13001) |
+| Existing server (deploy) | `./scripts/deploy-and-verify-on-server.sh` (backup, pull, build, db:setup, seed, PM2 restart; set APP_PORT if not 13001) |
 
 ---
 
@@ -68,9 +71,8 @@ npm run db:seed-entities-checkpoints
 |--------|---------|
 | **db:setup** | Schema (create-schema.sql) + in-code migrations (lib/db.ts). Safe to re-run. |
 | **db:seed-entities-checkpoints** | Seed entities/checkpoints from checkpoints_data.json (run after editing that file). |
-| **deploy-and-verify-on-server.sh** | On server: git pull, npm ci, build, db:setup, seed, PM2 restart, health check. |
+| **deploy-and-verify-on-server.sh** | On server: backup DB, git pull, npm ci, build, db:setup, seed, PM2 restart, health check. |
 | **deploy-from-local.sh** | From local: git push, then SSH to server and run deploy-and-verify-on-server.sh. Set `SERVER=root@host`. |
-| **migrate-entity-allowed-distance.mjs** | Optional: add `entities.allowed_distance` only (idempotent). db:setup already does this. |
 | **verify-server.sh** | Quick health check: `./scripts/verify-server.sh https://your-domain.com` |
 
 ---

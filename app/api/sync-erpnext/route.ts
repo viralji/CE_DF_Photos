@@ -132,6 +132,251 @@ function parseRowsFromSheet(rows: unknown[][]): SyncRow[] {
   return pairs;
 }
 
+export type ErpSyncResult =
+  | { success: true; message: string; routesAdded: number; subsectionsAdded: number; subsectionsUpdated: number }
+  | { success: false; message: string; status: number };
+
+/** Core sync logic: fetch from ERPNext, upsert routes/subsections. No auth/session. */
+export async function runErpNextSync(): Promise<ErpSyncResult> {
+  const erpnextUrl = process.env.ERPNEXT_URL?.trim();
+  const apiKey = process.env.ERPNEXT_API_KEY?.trim();
+  const apiSecret = process.env.ERPNEXT_API_SECRET?.trim();
+  const reportName = (process.env.ERPNEXT_REPORT_NAME || DEFAULT_REPORT_NAME).trim();
+
+  if (!erpnextUrl || !apiKey || !apiSecret) {
+    return {
+      success: false,
+      message:
+        'Please configure ERPNEXT_URL, ERPNEXT_API_KEY, and ERPNEXT_API_SECRET in environment variables.',
+      status: 400,
+    };
+  }
+
+  const reportUrl = `${erpnextUrl.replace(/\/$/, '')}/api/method/frappe.desk.query_report.run?report_name=${encodeURIComponent(reportName)}&format=Excel`;
+  const authToken = `token ${apiKey}:${apiSecret}`;
+
+  const response = await fetch(reportUrl, {
+    method: 'GET',
+    headers: {
+      Authorization: authToken,
+      Accept:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = `ERPNext API error: ${response.status} ${response.statusText}`;
+    try {
+      const errJson = JSON.parse(errorText);
+      errorMessage = (errJson as { message?: string; error?: string }).message ?? (errJson as { message?: string; error?: string }).error ?? errorMessage;
+    } catch {
+      if (errorText) errorMessage = errorText.substring(0, 200);
+    }
+    if (response.status === 401 || response.status === 403) {
+      return {
+        success: false,
+        message: errorMessage || 'Invalid API credentials or insufficient permissions.',
+        status: 401,
+      };
+    }
+    return { success: false, message: errorMessage, status: response.status };
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  let pairs: SyncRow[] = [];
+
+  if (contentType.includes('application/json')) {
+    const jsonResponse = (await response.json()) as Record<string, unknown> & {
+      result?: unknown[];
+      message?: unknown[] | { result?: unknown[] };
+      exc_type?: unknown;
+      exc?: unknown;
+    };
+    if (jsonResponse.exc_type || jsonResponse.exc || (typeof jsonResponse.error === 'string' && !jsonResponse.result)) {
+      return {
+        success: false,
+        message:
+          (jsonResponse as { message?: string }).message ?? (jsonResponse as { error?: string }).error ?? 'Unknown error from ERPNext',
+        status: 500,
+      };
+    }
+    let resultData: unknown[] | null = null;
+    let columns: string[] | null = null;
+    if (Array.isArray(jsonResponse.result)) resultData = jsonResponse.result;
+    else if (Array.isArray(jsonResponse)) resultData = jsonResponse;
+    else if (Array.isArray(jsonResponse.message)) resultData = jsonResponse.message;
+    else if (
+      jsonResponse.message &&
+      typeof jsonResponse.message === 'object'
+    ) {
+      const msg = jsonResponse.message as { result?: unknown[]; columns?: string[] };
+      if (Array.isArray(msg.result)) resultData = msg.result;
+      if (Array.isArray(msg.columns)) columns = msg.columns;
+    }
+    if (!resultData || resultData.length === 0) {
+      return {
+        success: false,
+        message: `ERPNext returned empty or invalid data. Response keys: ${Object.keys(jsonResponse).join(', ')}`,
+        status: 400,
+      };
+    }
+    pairs = parseRowsFromJson(resultData, columns);
+  } else {
+    const buffer = await response.arrayBuffer();
+    if (!buffer || buffer.byteLength === 0) {
+      return { success: false, message: 'ERPNext returned empty Excel file.', status: 500 };
+    }
+    const workbook = XLSX.read(Buffer.from(buffer), { type: 'buffer' });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' }) as unknown[][];
+    pairs = parseRowsFromSheet(rows);
+  }
+
+  if (pairs.length === 0) {
+    return {
+      success: false,
+      message:
+        'Report has no rows with UG Route and SLD Name. Ensure columns exist: UG Route, SLD Name; optional: subsection_id, route_length, subsection_length. Column names are case-insensitive and spaces become underscores.',
+      status: 400,
+    };
+  }
+
+  const db = getDb();
+
+  const allRoutes = db.prepare('SELECT route_id, route_name, length FROM routes').all() as {
+    route_id: string;
+    route_name: string;
+    length?: number | null;
+  }[];
+  const allSubsections = db
+    .prepare('SELECT route_id, subsection_id, subsection_name, length FROM subsections')
+    .all() as { route_id: string; subsection_id: string; subsection_name: string; length?: number | null }[];
+
+  let nextRouteId = ROUTE_ID_START;
+  for (const r of allRoutes) {
+    const n = parseInt(r.route_id, 10);
+    if (!Number.isNaN(n) && n >= ROUTE_ID_START && n >= nextRouteId) nextRouteId = n + 1;
+  }
+
+  let nextSubsectionId = SUBSECTION_ID_START;
+  for (const s of allSubsections) {
+    const n = parseInt(s.subsection_id, 10);
+    if (!Number.isNaN(n) && n >= SUBSECTION_ID_START && n >= nextSubsectionId)
+      nextSubsectionId = n + 1;
+  }
+
+  const routeByName = new Map<string, string>();
+  for (const r of allRoutes) {
+    routeByName.set(r.route_name.trim(), r.route_id);
+  }
+
+  const subsectionByRouteAndId = new Map<string, { subsection_name: string; length: number | null }>();
+  for (const s of allSubsections) {
+    subsectionByRouteAndId.set(`${s.route_id}::${s.subsection_id}`, {
+      subsection_name: s.subsection_name,
+      length: s.length ?? null,
+    });
+  }
+  const subsectionByRouteAndName = new Set<string>();
+  for (const s of allSubsections) {
+    subsectionByRouteAndName.add(`${s.route_id}::${s.subsection_name.trim()}`);
+  }
+
+  const insertRoute = db.prepare(
+    'INSERT INTO routes (route_id, route_name, length) VALUES (?, ?, ?)'
+  );
+  const insertSubsection = db.prepare(
+    'INSERT INTO subsections (route_id, subsection_id, subsection_name, length) VALUES (?, ?, ?, ?)'
+  );
+  const updateRouteLength = db.prepare(
+    'UPDATE routes SET length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ?'
+  );
+  const updateSubsection = db.prepare(
+    'UPDATE subsections SET subsection_name = ?, length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ? AND subsection_id = ?'
+  );
+  const updateSubsectionLength = db.prepare(
+    'UPDATE subsections SET length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ? AND subsection_id = ?'
+  );
+
+  let routesAdded = 0;
+  let subsectionsAdded = 0;
+  let subsectionsUpdated = 0;
+
+  const distinctRouteNames = [...new Set(pairs.map((p) => p.routeName))];
+  for (const routeName of distinctRouteNames) {
+    const firstPair = pairs.find((p) => p.routeName === routeName);
+    const routeLength = firstPair?.routeLength ?? null;
+    if (routeByName.has(routeName)) {
+      const rid = routeByName.get(routeName)!;
+      updateRouteLength.run(routeLength != null ? routeLength : null, rid);
+      continue;
+    }
+    const rid = String(nextRouteId++);
+    insertRoute.run(rid, routeName, routeLength != null ? routeLength : null);
+    routeByName.set(routeName, rid);
+    routesAdded++;
+  }
+
+  for (const { routeName, subsectionName, subsectionId, subsectionLength } of pairs) {
+    const routeId = routeByName.get(routeName);
+    if (!routeId) continue;
+
+    if (subsectionId != null && subsectionId !== '') {
+      const key = `${routeId}::${subsectionId}`;
+      const existing = subsectionByRouteAndId.get(key);
+      if (existing) {
+        updateSubsection.run(
+          subsectionName,
+          subsectionLength != null ? subsectionLength : null,
+          routeId,
+          subsectionId
+        );
+        subsectionByRouteAndId.set(key, { subsection_name: subsectionName, length: subsectionLength ?? null });
+        subsectionsUpdated++;
+      } else {
+        insertSubsection.run(routeId, subsectionId, subsectionName, subsectionLength != null ? subsectionLength : null);
+        subsectionByRouteAndId.set(key, { subsection_name: subsectionName, length: subsectionLength ?? null });
+        subsectionsAdded++;
+      }
+      continue;
+    }
+
+    const keyByName = `${routeId}::${subsectionName}`;
+    const existingSub = allSubsections.find(
+      (s) => s.route_id === routeId && s.subsection_name.trim() === subsectionName.trim()
+    );
+    if (subsectionByRouteAndName.has(keyByName)) {
+      if (existingSub) {
+        updateSubsectionLength.run(subsectionLength != null ? subsectionLength : null, routeId, existingSub.subsection_id);
+      }
+      continue;
+    }
+    const sid = String(nextSubsectionId++);
+    insertSubsection.run(routeId, sid, subsectionName, subsectionLength != null ? subsectionLength : null);
+    subsectionByRouteAndName.add(keyByName);
+    subsectionsAdded++;
+  }
+
+  return {
+    success: true,
+    message: `Synced: ${routesAdded} route(s) added; ${subsectionsAdded} subsection(s) added, ${subsectionsUpdated} updated. Lengths updated for existing routes and subsections.`,
+    routesAdded,
+    subsectionsAdded,
+    subsectionsUpdated,
+  };
+}
+
+export function writeErpSyncLastRun(message: string): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const upsert = db.prepare(
+    "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  );
+  upsert.run('erp_sync_last_run_at', now);
+  upsert.run('erp_sync_last_run_message', message);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSessionWithRole(request);
@@ -142,260 +387,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const erpnextUrl = process.env.ERPNEXT_URL?.trim();
-    const apiKey = process.env.ERPNEXT_API_KEY?.trim();
-    const apiSecret = process.env.ERPNEXT_API_SECRET?.trim();
-    const reportName = (process.env.ERPNEXT_REPORT_NAME || DEFAULT_REPORT_NAME).trim();
+    const result = await runErpNextSync();
+    writeErpSyncLastRun(result.message);
 
-    if (!erpnextUrl || !apiKey || !apiSecret) {
-      return NextResponse.json(
-        {
-          error: 'ERPNext configuration missing',
-          message:
-            'Please configure ERPNEXT_URL, ERPNEXT_API_KEY, and ERPNEXT_API_SECRET in environment variables.',
-        },
-        { status: 400 }
-      );
-    }
-
-    const reportUrl = `${erpnextUrl.replace(/\/$/, '')}/api/method/frappe.desk.query_report.run?report_name=${encodeURIComponent(reportName)}&format=Excel`;
-    const authToken = `token ${apiKey}:${apiSecret}`;
-
-    const response = await fetch(reportUrl, {
-      method: 'GET',
-      headers: {
-        Authorization: authToken,
-        Accept:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `ERPNext API error: ${response.status} ${response.statusText}`;
-      try {
-        const errJson = JSON.parse(errorText);
-        errorMessage = (errJson as { message?: string; error?: string }).message ?? (errJson as { message?: string; error?: string }).error ?? errorMessage;
-      } catch {
-        if (errorText) errorMessage = errorText.substring(0, 200);
-      }
-      if (response.status === 401 || response.status === 403) {
-        return NextResponse.json(
-          {
-            error: 'Authentication failed',
-            message: errorMessage || 'Invalid API credentials or insufficient permissions.',
-          },
-          { status: 401 }
-        );
-      }
-      return NextResponse.json(
-        { error: 'Failed to fetch report from ERPNext', message: errorMessage },
-        { status: response.status }
-      );
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    let pairs: SyncRow[] = [];
-
-    if (contentType.includes('application/json')) {
-      const jsonResponse = (await response.json()) as Record<string, unknown> & {
-        result?: unknown[];
-        message?: unknown[] | { result?: unknown[] };
-        exc_type?: unknown;
-        exc?: unknown;
-      };
-      if (jsonResponse.exc_type || jsonResponse.exc || (typeof jsonResponse.error === 'string' && !jsonResponse.result)) {
-        return NextResponse.json(
-          {
-            error: 'ERPNext returned error',
-            message:
-              (jsonResponse as { message?: string }).message ?? (jsonResponse as { error?: string }).error ?? 'Unknown error from ERPNext',
-          },
-          { status: 500 }
-        );
-      }
-      let resultData: unknown[] | null = null;
-      let columns: string[] | null = null;
-      if (Array.isArray(jsonResponse.result)) resultData = jsonResponse.result;
-      else if (Array.isArray(jsonResponse)) resultData = jsonResponse;
-      else if (Array.isArray(jsonResponse.message)) resultData = jsonResponse.message;
-      else if (
-        jsonResponse.message &&
-        typeof jsonResponse.message === 'object'
-      ) {
-        const msg = jsonResponse.message as { result?: unknown[]; columns?: string[] };
-        if (Array.isArray(msg.result)) resultData = msg.result;
-        if (Array.isArray(msg.columns)) columns = msg.columns;
-      }
-      if (!resultData || resultData.length === 0) {
-        return NextResponse.json(
-          {
-            error: 'Invalid data',
-            message: `ERPNext returned empty or invalid data. Response keys: ${Object.keys(jsonResponse).join(', ')}`,
-          },
-          { status: 400 }
-        );
-      }
-      pairs = parseRowsFromJson(resultData, columns);
-    } else {
-      const buffer = await response.arrayBuffer();
-      if (!buffer || buffer.byteLength === 0) {
-        return NextResponse.json(
-          { error: 'Empty response', message: 'ERPNext returned empty Excel file.' },
-          { status: 500 }
-        );
-      }
-      const workbook = XLSX.read(Buffer.from(buffer), { type: 'buffer' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' }) as unknown[][];
-      pairs = parseRowsFromSheet(rows);
-    }
-
-    if (pairs.length === 0) {
-      return NextResponse.json(
-        {
-          error: 'No data',
-          message:
-            'Report has no rows with UG Route and SLD Name. Ensure columns exist: UG Route, SLD Name; optional: subsection_id, route_length, subsection_length. Column names are case-insensitive and spaces become underscores.',
-        },
-        { status: 400 }
-      );
-    }
-
-    const db = getDb();
-
-    const allRoutes = db.prepare('SELECT route_id, route_name, length FROM routes').all() as {
-      route_id: string;
-      route_name: string;
-      length?: number | null;
-    }[];
-    const allSubsections = db
-      .prepare('SELECT route_id, subsection_id, subsection_name, length FROM subsections')
-      .all() as { route_id: string; subsection_id: string; subsection_name: string; length?: number | null }[];
-
-    let nextRouteId = ROUTE_ID_START;
-    for (const r of allRoutes) {
-      const n = parseInt(r.route_id, 10);
-      if (!Number.isNaN(n) && n >= ROUTE_ID_START && n >= nextRouteId) nextRouteId = n + 1;
-    }
-
-    let nextSubsectionId = SUBSECTION_ID_START;
-    for (const s of allSubsections) {
-      const n = parseInt(s.subsection_id, 10);
-      if (!Number.isNaN(n) && n >= SUBSECTION_ID_START && n >= nextSubsectionId)
-        nextSubsectionId = n + 1;
-    }
-
-    const routeByName = new Map<string, string>();
-    for (const r of allRoutes) {
-      routeByName.set(r.route_name.trim(), r.route_id);
-    }
-
-    const subsectionByRouteAndId = new Map<string, { subsection_name: string; length: number | null }>();
-    for (const s of allSubsections) {
-      subsectionByRouteAndId.set(`${s.route_id}::${s.subsection_id}`, {
-        subsection_name: s.subsection_name,
-        length: s.length ?? null,
+    if (result.success) {
+      return NextResponse.json({
+        success: true,
+        message: result.message,
+        routesAdded: result.routesAdded,
+        subsectionsAdded: result.subsectionsAdded,
+        subsectionsUpdated: result.subsectionsUpdated,
       });
     }
-    const subsectionByRouteAndName = new Set<string>();
-    for (const s of allSubsections) {
-      subsectionByRouteAndName.add(`${s.route_id}::${s.subsection_name.trim()}`);
-    }
-
-    const insertRoute = db.prepare(
-      'INSERT INTO routes (route_id, route_name, length) VALUES (?, ?, ?)'
+    return NextResponse.json(
+      { error: result.status === 400 ? 'ERPNext configuration missing' : result.status === 401 ? 'Authentication failed' : 'Failed to sync from ERPNext', message: result.message },
+      { status: result.status }
     );
-    const insertSubsection = db.prepare(
-      'INSERT INTO subsections (route_id, subsection_id, subsection_name, length) VALUES (?, ?, ?, ?)'
-    );
-    const updateRouteLength = db.prepare(
-      'UPDATE routes SET length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ?'
-    );
-    const updateSubsection = db.prepare(
-      'UPDATE subsections SET subsection_name = ?, length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ? AND subsection_id = ?'
-    );
-    const updateSubsectionLength = db.prepare(
-      'UPDATE subsections SET length = ?, updated_at = CURRENT_TIMESTAMP WHERE route_id = ? AND subsection_id = ?'
-    );
-
-    let routesAdded = 0;
-    let subsectionsAdded = 0;
-    let subsectionsUpdated = 0;
-
-    const distinctRouteNames = [...new Set(pairs.map((p) => p.routeName))];
-    for (const routeName of distinctRouteNames) {
-      const firstPair = pairs.find((p) => p.routeName === routeName);
-      const routeLength = firstPair?.routeLength ?? null;
-      if (routeByName.has(routeName)) {
-        const rid = routeByName.get(routeName)!;
-        updateRouteLength.run(routeLength != null ? routeLength : null, rid);
-        continue;
-      }
-      const rid = String(nextRouteId++);
-      insertRoute.run(rid, routeName, routeLength != null ? routeLength : null);
-      routeByName.set(routeName, rid);
-      routesAdded++;
-    }
-
-    for (const { routeName, subsectionName, subsectionId, subsectionLength } of pairs) {
-      const routeId = routeByName.get(routeName);
-      if (!routeId) continue;
-
-      if (subsectionId != null && subsectionId !== '') {
-        const key = `${routeId}::${subsectionId}`;
-        const existing = subsectionByRouteAndId.get(key);
-        if (existing) {
-          updateSubsection.run(
-            subsectionName,
-            subsectionLength != null ? subsectionLength : null,
-            routeId,
-            subsectionId
-          );
-          subsectionByRouteAndId.set(key, { subsection_name: subsectionName, length: subsectionLength ?? null });
-          subsectionsUpdated++;
-        } else {
-          insertSubsection.run(routeId, subsectionId, subsectionName, subsectionLength != null ? subsectionLength : null);
-          subsectionByRouteAndId.set(key, { subsection_name: subsectionName, length: subsectionLength ?? null });
-          subsectionsAdded++;
-        }
-        continue;
-      }
-
-      const keyByName = `${routeId}::${subsectionName}`;
-      const existingSub = allSubsections.find(
-        (s) => s.route_id === routeId && s.subsection_name.trim() === subsectionName.trim()
-      );
-      if (subsectionByRouteAndName.has(keyByName)) {
-        if (existingSub) {
-          updateSubsectionLength.run(subsectionLength != null ? subsectionLength : null, routeId, existingSub.subsection_id);
-        }
-        continue;
-      }
-      const sid = String(nextSubsectionId++);
-      insertSubsection.run(routeId, sid, subsectionName, subsectionLength != null ? subsectionLength : null);
-      subsectionByRouteAndName.add(keyByName);
-      subsectionsAdded++;
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Synced: ${routesAdded} route(s) added; ${subsectionsAdded} subsection(s) added, ${subsectionsUpdated} updated. Lengths updated for existing routes and subsections.`,
-      routesAdded,
-      subsectionsAdded,
-      subsectionsUpdated,
-    });
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;
     logError('Sync ERPNext', error);
+    const message = err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED'
+      ? `Cannot connect to ERPNext server: ${err.message}`
+      : (err as Error).message;
+    writeErpSyncLastRun(message);
     if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
       return NextResponse.json(
-        { error: 'Connection failed', message: `Cannot connect to ERPNext server: ${err.message}` },
+        { error: 'Connection failed', message },
         { status: 503 }
       );
     }
     return NextResponse.json(
-      { error: 'Failed to sync from ERPNext', message: (err as Error).message },
+      { error: 'Failed to sync from ERPNext', message },
       { status: 500 }
     );
   }

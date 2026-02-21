@@ -1109,6 +1109,85 @@ export default function AdminPage() {
 
         {activeTab === 4 && (
         <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h2 className="font-semibold text-slate-900 text-sm mb-2">ERP sync schedule</h2>
+          <p className="text-xs text-slate-500 mb-2">Run sync with ERPNext automatically at the chosen interval (in minutes). 0 = off. When on, the last run time and result are shown below so you can verify it is running.</p>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <input
+              id="admin-erp-sync-interval"
+              type="number"
+              min={0}
+              max={10080}
+              placeholder="0 = off"
+              className="rounded border border-slate-300 px-2 py-1.5 text-sm w-28"
+              defaultValue={meData?.erpSyncIntervalMinutes ?? 0}
+              key={`erp-interval-${meData?.erpSyncIntervalMinutes ?? 0}`}
+            />
+            <span className="text-xs text-slate-500">minutes (max 10080 = 7 days)</span>
+            <button
+              type="button"
+              onClick={async () => {
+                const el = document.getElementById('admin-erp-sync-interval') as HTMLInputElement | null;
+                const raw = el?.value?.trim();
+                const val = raw === '' || raw === undefined ? 0 : parseInt(raw, 10);
+                if (!Number.isFinite(val) || val < 0 || val > 10080) {
+                  setMessage('❌ Enter 0 (off) or 1–10080 minutes.');
+                  scheduleMessageClear();
+                  return;
+                }
+                try {
+                  const res = await fetch('/api/settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ erpSyncIntervalMinutes: val }),
+                  });
+                  if (!res.ok) throw new Error('Failed to update');
+                  await queryClient.invalidateQueries({ queryKey: ['me'] });
+                  scheduleMessageClear();
+                  setMessage(val === 0 ? '✓ ERP sync schedule turned off.' : `✓ ERP sync scheduled every ${val} minute(s).`);
+                } catch {
+                  setMessage('❌ Failed to update schedule.');
+                }
+              }}
+              className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              disabled={syncErpnextLoading}
+              onClick={async () => {
+                setSyncErpnextLoading(true);
+                setMessage('');
+                try {
+                  const res = await fetch('/api/sync-erpnext', { method: 'POST' });
+                  const data = await res.json().catch(() => ({}));
+                  await queryClient.invalidateQueries({ queryKey: ['me'] });
+                  queryClient.invalidateQueries({ queryKey: ['routes'] });
+                  queryClient.invalidateQueries({ queryKey: ['subsections'] });
+                  if (!res.ok) {
+                    setMessage(`❌ ${data?.message ?? data?.error ?? 'Sync failed'}`);
+                    return;
+                  }
+                  setMessage(`✓ ${data?.message ?? 'Synced.'}`);
+                  scheduleMessageClear();
+                } catch (e) {
+                  setMessage(`❌ ${(e as Error).message}`);
+                } finally {
+                  setSyncErpnextLoading(false);
+                }
+              }}
+              className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {syncErpnextLoading ? 'Syncing…' : 'Sync now'}
+            </button>
+          </div>
+          <p className="text-xs text-slate-600">
+            Last run: {meData?.erpSyncLastRunAt
+              ? `${new Date(meData.erpSyncLastRunAt).toLocaleString()} – ${(meData?.erpSyncLastRunMessage ?? '').trim() || 'Done'}`
+              : 'Never'}
+          </p>
+
+          <div className="pt-4 mt-4 border-t border-slate-200">
           <h2 className="font-semibold text-slate-900 text-sm mb-3">Capture rules</h2>
 
           <div className="mb-4">
@@ -1177,6 +1256,7 @@ export default function AdminPage() {
                 Disable
               </button>
             </div>
+          </div>
           </div>
 
           <div className="pt-4 border-t border-slate-200">

@@ -14,7 +14,7 @@ export async function PATCH(request: NextRequest) {
     }
     const body = await request.json().catch(() => ({}));
     const db = getDb();
-    const out: { captureDistanceCheckEnabled?: boolean; maxCaptureDistanceMeters?: number | null; maxGpsAccuracyMeters?: number | null } = {};
+    const out: { captureDistanceCheckEnabled?: boolean; maxCaptureDistanceMeters?: number | null; maxGpsAccuracyMeters?: number | null; erpSyncIntervalMinutes?: number } = {};
     if (body.hasOwnProperty('maxCaptureDistanceMeters')) {
       const raw = body.maxCaptureDistanceMeters;
       if (raw !== null && raw !== undefined) {
@@ -59,8 +59,19 @@ export async function PATCH(request: NextRequest) {
         out.maxGpsAccuracyMeters = null;
       }
     }
+    if (body.hasOwnProperty('erpSyncIntervalMinutes')) {
+      const raw = body.erpSyncIntervalMinutes;
+      const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+      if (!Number.isFinite(n) || n < 0 || n > 10080) {
+        return NextResponse.json({ error: 'erpSyncIntervalMinutes must be 0 (off) or 1–10080 minutes (max 7 days)' }, { status: 400 });
+      }
+      db.prepare(
+        "INSERT INTO app_settings (key, value) VALUES ('erp_sync_interval_minutes', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+      ).run(String(n));
+      out.erpSyncIntervalMinutes = n;
+    }
     if (Object.keys(out).length === 0) {
-      return NextResponse.json({ error: 'Provide maxCaptureDistanceMeters and/or maxGpsAccuracyMeters' }, { status: 400 });
+      return NextResponse.json({ error: 'Provide maxCaptureDistanceMeters, maxGpsAccuracyMeters, and/or erpSyncIntervalMinutes' }, { status: 400 });
     }
     return NextResponse.json(out);
   } catch (error: unknown) {

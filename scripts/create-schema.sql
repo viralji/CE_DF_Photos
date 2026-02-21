@@ -1,9 +1,8 @@
 -- Database schema for CE_DF_Photos (SQLite)
--- Version: entities, checkpoints.entity_id, subsection_allowed_emails, photo_submissions.resubmission_of_id, app_settings, routes.length, subsections.length. Subsections unique key: (route_id, subsection_id); subsection_id comes from ERP report.
+-- Canonical schema for new installs. Includes entities.allowed_distance, checkpoints.checkpoint_type/photo_type, routes/subsections length, app_settings, etc.
+-- Existing DBs are updated by in-code migrations in lib/db.ts when you run "npm run db:setup" (getDb()).
 --
--- Deployment (e.g. Digital Ocean): Use "npm run db:setup" then "npm run db:seed-entities-checkpoints".
--- db:setup loads this schema on first run and applies all in-code migrations (lib/db.ts), including resubmission_of_id, app_settings, routes/subsections length.
--- New installs: schema is applied via getDb() in lib/db.ts. Existing DBs: run db:setup (idempotent).
+-- Deployment: New server = "npm run db:setup" then "npm run db:seed-entities-checkpoints". Existing server = deploy script runs db:setup (applies any missing migrations).
 
 CREATE TABLE IF NOT EXISTS routes (
   row_id INTEGER PRIMARY KEY AUTOINCREMENT,
