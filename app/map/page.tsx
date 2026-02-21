@@ -243,6 +243,7 @@ export default function MapPage() {
         return icon;
       }
 
+      const stageLabel = (s: string | undefined) => (s === 'S' || s === 'B') ? 'Single' : (s === 'M' || s === 'O') ? 'Multiple' : (s || '');
       photosWithLocation.forEach((photo: { latitude?: number; longitude?: number; id: number; filename?: string; checkpoint_name?: string; entity?: string; execution_stage?: string; status?: string }) => {
         if (photo.latitude == null || photo.longitude == null) return;
         const entityKey = (photo.entity ?? '').trim();
@@ -257,7 +258,7 @@ export default function MapPage() {
               <a href="${viewFullUrl}"><img src="${imageUrl}" alt="" style="width: 200px; height: 200px; object-fit: cover;" /></a>
               <a href="${viewFullUrl}">View full size</a>
               <p><strong>${(photo.checkpoint_name || '').replace(/</g, '&lt;')}</strong></p>
-              <p>${(photo.entity || '').replace(/</g, '&lt;')} - ${(photo.execution_stage || '').replace(/</g, '&lt;')}</p>
+              <p>${(photo.entity || '').replace(/</g, '&lt;')} - ${stageLabel(photo.execution_stage).replace(/</g, '&lt;')}</p>
               <p>Status: ${(photo.status || '').replace(/</g, '&lt;')}</p>
             </div>`
           );

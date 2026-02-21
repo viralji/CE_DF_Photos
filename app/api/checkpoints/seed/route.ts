@@ -29,8 +29,8 @@ export async function POST(request: NextRequest) {
     const getEntityId = db.prepare('SELECT id FROM entities WHERE name = ?');
     const maxEntityOrder = db.prepare('SELECT COALESCE(MAX(display_order), 0) + 1 AS next_order FROM entities');
     const insertCheckpoint = db.prepare(
-      `INSERT OR IGNORE INTO checkpoints (entity_id, checkpoint_name, code, display_order, evidence_type, execution_stage, execution_before, execution_ongoing, execution_after, photo_type)
-       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`
+      `INSERT OR IGNORE INTO checkpoints (entity_id, checkpoint_name, code, display_order, evidence_type, execution_stage, execution_before, execution_ongoing, execution_after, checkpoint_type, photo_type)
+       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     for (const row of rows) {
@@ -62,11 +62,12 @@ export async function POST(request: NextRequest) {
       const before = row['Unnamed: 4'] === true || row['execution_before'] === 1 ? 1 : 0;
       const ongoing = row['Unnamed: 5'] === true || row['execution_ongoing'] === 1 ? 1 : 0;
       const after = row['Unnamed: 6'] === true || row['execution_after'] === 1 ? 1 : 0;
-      const execution_stage = before ? 'Before' : ongoing ? 'Ongoing' : after ? 'After' : 'Ongoing';
-      const photoType = typeof row['31'] === 'number' ? row['31'] : null;
+      const checkpoint_type = (before || after) ? 'Single' : 'Multiple';
+      const execution_stage = checkpoint_type === 'Single' ? 'Before' : 'Ongoing';
+      const photoType = checkpoint_type === 'Single' ? 1 : (typeof row['31'] === 'number' ? row['31'] : null);
       const code = to3CharCode(finalCheckpoint);
 
-      const result = insertCheckpoint.run(entity_id, finalCheckpoint, code, evidenceType, execution_stage, before, ongoing, after, photoType);
+      const result = insertCheckpoint.run(entity_id, finalCheckpoint, code, evidenceType, execution_stage, before, ongoing, after, checkpoint_type, photoType);
       if (result.changes > 0) count++;
     }
 

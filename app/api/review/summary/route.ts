@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
           SUM(CASE WHEN ps.status = 'approved' THEN 1 ELSE 0 END) as approved_count,
           SUM(CASE WHEN ps.status = 'pending' THEN 1 ELSE 0 END) as pending_count,
           SUM(CASE WHEN ps.status = 'qc_required' THEN 1 ELSE 0 END) as qc_required_count,
-          SUM(CASE WHEN ps.status = 'nc' THEN 1 ELSE 0 END) as nc_count
+          SUM(CASE WHEN ps.status = 'nc' THEN 1 ELSE 0 END) as nc_count,
+          CAST(MAX(CASE WHEN ps.status IN ('pending', 'qc_required', 'nc') THEN (julianday('now') - julianday(ps.created_at)) ELSE NULL END) AS INTEGER) as oldest_non_approved_days
          FROM (
            SELECT * FROM photo_submissions
            WHERE id NOT IN (SELECT resubmission_of_id FROM photo_submissions WHERE resubmission_of_id IS NOT NULL)
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
         SUM(CASE WHEN ps.status = 'approved' THEN 1 ELSE 0 END) as approved_count,
         SUM(CASE WHEN ps.status = 'pending' THEN 1 ELSE 0 END) as pending_count,
         SUM(CASE WHEN ps.status = 'qc_required' THEN 1 ELSE 0 END) as qc_required_count,
-        SUM(CASE WHEN ps.status = 'nc' THEN 1 ELSE 0 END) as nc_count
+        SUM(CASE WHEN ps.status = 'nc' THEN 1 ELSE 0 END) as nc_count,
+        CAST(MAX(CASE WHEN ps.status IN ('pending', 'qc_required', 'nc') THEN (julianday('now') - julianday(ps.created_at)) ELSE NULL END) AS INTEGER) as oldest_non_approved_days
        FROM (
          SELECT * FROM photo_submissions
          WHERE id NOT IN (SELECT resubmission_of_id FROM photo_submissions WHERE resubmission_of_id IS NOT NULL)

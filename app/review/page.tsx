@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { getAgingDays, formatAging, getAgingBadgeClass } from '@/lib/aging';
 
 type SummaryRow = {
   route_id: string;
@@ -14,6 +15,7 @@ type SummaryRow = {
   pending_count: number;
   qc_required_count: number;
   nc_count: number;
+  oldest_non_approved_days?: number | null;
 };
 
 type PhotoRow = {
@@ -23,6 +25,12 @@ type PhotoRow = {
   execution_stage?: string;
   status?: string;
   resubmission_of_id?: number | null;
+  user_email?: string | null;
+  user_name?: string | null;
+  reviewer_email?: string | null;
+  reviewer_name?: string | null;
+  reviewed_at?: string | null;
+  created_at?: string | null;
 };
 
 type CommentRow = { id: number; author_email: string; author_name: string | null; created_at: string; comment_text: string };
@@ -84,6 +92,16 @@ function ReviewPhotoCard({
   const previousPhoto = previousPhotoData ?? null;
   const isResubmission = previousPhoto != null;
 
+  const submitterLabel = photo.user_name || photo.user_email || null;
+  const approverLabel = photo.reviewer_name || photo.reviewer_email || null;
+  const reviewedAt = photo.reviewed_at ? new Date(photo.reviewed_at).toLocaleString() : null;
+
+  const showAging = photo.status !== 'approved' && photo.created_at;
+  const agingDays = showAging ? getAgingDays(photo.created_at) : 0;
+  const agingLabel = showAging ? formatAging(agingDays) : '';
+  const agingTitle = showAging ? `Submitted ${agingDays} day${agingDays !== 1 ? 's' : ''} ago` : '';
+  const agingBadgeClass = getAgingBadgeClass(agingDays);
+
   const singleCard = (
     <>
       <img
@@ -91,7 +109,14 @@ function ReviewPhotoCard({
         alt=""
         className="w-full h-48 object-cover"
       />
-      <div className="p-2 md:p-3 bg-white flex flex-wrap gap-1.5 md:gap-2">
+      <div className="p-2 md:p-3 bg-white space-y-2">
+        <div className="text-xs text-slate-500">
+          {submitterLabel != null && <span>Submitted by: {submitterLabel}</span>}
+          {photo.status === 'approved' && approverLabel != null && (
+            <span className={submitterLabel != null ? ' block mt-0.5' : ''}>Approved by: {approverLabel}{reviewedAt != null ? ` (${reviewedAt})` : ''}</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5 md:gap-2">
         <Link
           href={`/view-photo/${photo.id}`}
           className="inline-flex items-center justify-center gap-1 p-1.5 md:px-2 md:py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700"
@@ -118,6 +143,7 @@ function ReviewPhotoCard({
             </svg>
           </button>
         )}
+        </div>
       </div>
     </>
   );
@@ -127,6 +153,11 @@ function ReviewPhotoCard({
       <>
         {/* Mobile: Single photo with compact buttons */}
         <div className="md:hidden relative rounded-lg overflow-hidden border-2 border-slate-200 bg-white shadow-sm">
+          {showAging && agingLabel && (
+            <div className="absolute top-2 left-2 z-10" title={agingTitle}>
+              <span className={`px-2 py-1 rounded text-xs font-semibold ${agingBadgeClass}`}>{agingLabel}</span>
+            </div>
+          )}
           <div className="absolute top-2 right-2 z-10">
             <span className={`px-2 py-1 rounded text-xs font-semibold ${
               photo.status === 'approved' ? 'bg-green-600 text-white' :
@@ -219,6 +250,9 @@ function ReviewPhotoCard({
         <div className="flex flex-col min-h-[280px] bg-white rounded-lg p-3 border border-slate-200 shadow-sm">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Current (resubmission)</p>
+            {showAging && agingLabel && (
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold shrink-0 ${agingBadgeClass}`} title={agingTitle}>{agingLabel}</span>
+            )}
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 ${
               photo.status === 'approved' ? 'bg-green-600 text-white' :
               photo.status === 'qc_required' ? 'bg-orange-500 text-white' :
@@ -227,6 +261,14 @@ function ReviewPhotoCard({
               {photo.status === 'approved' ? 'Approved' : photo.status === 'qc_required' ? 'QC Required' : photo.status === 'nc' ? 'NC' : 'Pending'}
             </span>
           </div>
+          {(submitterLabel != null || (photo.status === 'approved' && approverLabel != null)) && (
+            <div className="text-xs text-slate-500 mb-2">
+              {submitterLabel != null && <span>Submitted by: {submitterLabel}</span>}
+              {photo.status === 'approved' && approverLabel != null && (
+                <span className={submitterLabel != null ? ' block mt-0.5' : ''}>Approved by: {approverLabel}{reviewedAt != null ? ` (${reviewedAt})` : ''}</span>
+              )}
+            </div>
+          )}
           <div className="flex-1 flex flex-col min-h-0">
             <div className="aspect-[4/3] rounded-md overflow-hidden bg-slate-100 flex-shrink-0">
               <img
@@ -266,6 +308,11 @@ function ReviewPhotoCard({
 
   return (
     <div className="relative rounded-lg overflow-hidden border-2 border-slate-200 hover:border-slate-300">
+      {showAging && agingLabel && (
+        <div className="absolute top-2 left-2 z-10" title={agingTitle}>
+          <span className={`px-2 py-1 rounded text-xs font-semibold ${agingBadgeClass}`}>{agingLabel}</span>
+        </div>
+      )}
       <div className="absolute top-2 right-2 z-10">
         <span className={`px-2 py-1 rounded text-xs font-semibold ${
           photo.status === 'approved' ? 'bg-green-600 text-white' :
@@ -783,19 +830,24 @@ function ReviewPageContent() {
                         ) : (
                           <span style={{width: '32px', height: '32px', minWidth: '32px', minHeight: '32px', maxWidth: '32px', maxHeight: '32px', padding: 0, margin: 0, boxSizing: 'border-box', overflow: 'hidden'}} className="inline-flex items-center justify-center shrink-0 rounded-full bg-slate-100 text-slate-600 font-semibold text-xs leading-none">{row.approved_count}</span>
                         )}
-                        {row.pending_count > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => openDetail(rowKey, 'pending')}
-                            style={{width: '32px', height: '32px', minWidth: '32px', minHeight: '32px', maxWidth: '32px', maxHeight: '32px', padding: 0, margin: 0, boxSizing: 'border-box', overflow: 'hidden'}}
-                            className="inline-flex items-center justify-center shrink-0 rounded-full bg-amber-100 text-amber-700 font-semibold text-xs leading-none border-0 hover:bg-amber-200"
-                            title="View pending"
-                          >
-                            {row.pending_count}
-                          </button>
-                        ) : (
-                          <span style={{width: '32px', height: '32px', minWidth: '32px', minHeight: '32px', maxWidth: '32px', maxHeight: '32px', padding: 0, margin: 0, boxSizing: 'border-box', overflow: 'hidden'}} className="inline-flex items-center justify-center shrink-0 rounded-full bg-slate-100 text-slate-600 font-semibold text-xs leading-none">{row.pending_count}</span>
-                        )}
+                        <span className="inline-flex items-center gap-1">
+                          {row.pending_count > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openDetail(rowKey, 'pending')}
+                              style={{width: '32px', height: '32px', minWidth: '32px', minHeight: '32px', maxWidth: '32px', maxHeight: '32px', padding: 0, margin: 0, boxSizing: 'border-box', overflow: 'hidden'}}
+                              className="inline-flex items-center justify-center shrink-0 rounded-full bg-amber-100 text-amber-700 font-semibold text-xs leading-none border-0 hover:bg-amber-200"
+                              title="View pending"
+                            >
+                              {row.pending_count}
+                            </button>
+                          ) : (
+                            <span style={{width: '32px', height: '32px', minWidth: '32px', minHeight: '32px', maxWidth: '32px', maxHeight: '32px', padding: 0, margin: 0, boxSizing: 'border-box', overflow: 'hidden'}} className="inline-flex items-center justify-center shrink-0 rounded-full bg-slate-100 text-slate-600 font-semibold text-xs leading-none">{row.pending_count}</span>
+                          )}
+                          {(row.pending_count > 0 || qcCount > 0 || ncCount > 0) && (row as SummaryRow).oldest_non_approved_days != null && (row as SummaryRow).oldest_non_approved_days !== undefined && (
+                            <span className="text-[10px] text-slate-500 whitespace-nowrap" title="Oldest non-approved (days)">{(row as SummaryRow).oldest_non_approved_days}d</span>
+                          )}
+                        </span>
                         {qcCount > 0 ? (
                           <button
                             type="button"
@@ -873,18 +925,23 @@ function ReviewPageContent() {
                           )}
                         </td>
                         <td className="p-3 text-center">
-                          {row.pending_count > 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => openDetail(rowKey, 'pending')}
-                              className="inline-flex items-center justify-center w-8 h-8 min-w-[2rem] max-w-[2rem] min-h-[2rem] max-h-[2rem] shrink-0 rounded-full bg-amber-100 text-amber-700 font-semibold text-xs leading-none p-0 border-0 hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                              title="View pending photos"
-                            >
-                              {row.pending_count}
-                            </button>
-                          ) : (
-                            <span className="inline-flex items-center justify-center w-8 h-8 min-w-[2rem] max-w-[2rem] min-h-[2rem] max-h-[2rem] shrink-0 rounded-full bg-slate-100 text-slate-600 font-semibold text-xs leading-none p-0">{row.pending_count}</span>
-                          )}
+                          <span className="inline-flex items-center justify-center gap-1.5">
+                            {row.pending_count > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openDetail(rowKey, 'pending')}
+                                className="inline-flex items-center justify-center w-8 h-8 min-w-[2rem] max-w-[2rem] min-h-[2rem] max-h-[2rem] shrink-0 rounded-full bg-amber-100 text-amber-700 font-semibold text-xs leading-none p-0 border-0 hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                title="View pending photos"
+                              >
+                                {row.pending_count}
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center justify-center w-8 h-8 min-w-[2rem] max-w-[2rem] min-h-[2rem] max-h-[2rem] shrink-0 rounded-full bg-slate-100 text-slate-600 font-semibold text-xs leading-none p-0">{row.pending_count}</span>
+                            )}
+                            {(row.pending_count > 0 || qcCount > 0 || ncCount > 0) && (row as SummaryRow).oldest_non_approved_days != null && (row as SummaryRow).oldest_non_approved_days !== undefined && (
+                              <span className="text-xs text-slate-500" title="Oldest non-approved (days)">{(row as SummaryRow).oldest_non_approved_days}d</span>
+                            )}
+                          </span>
                         </td>
                         <td className="p-3 text-center">
                           {qcCount > 0 ? (

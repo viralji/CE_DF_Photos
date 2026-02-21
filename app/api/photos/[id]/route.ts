@@ -32,7 +32,17 @@ export async function GET(
       return NextResponse.json({ error: 'Photo not found or access denied' }, { status: 404 });
     }
     const result = query(
-      'SELECT ps.*, r.route_name, s.subsection_name, e.name AS entity, c.checkpoint_name FROM photo_submissions ps LEFT JOIN routes r ON CAST(ps.route_id AS TEXT) = r.route_id LEFT JOIN subsections s ON CAST(ps.route_id AS TEXT) = s.route_id AND CAST(ps.subsection_id AS TEXT) = s.subsection_id LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id LEFT JOIN entities e ON c.entity_id = e.id WHERE ps.id = ?',
+      `SELECT ps.*, r.route_name, s.subsection_name, e.name AS entity, c.checkpoint_name,
+       u.email AS user_email, u.name AS user_name,
+       rev.email AS reviewer_email, rev.name AS reviewer_name
+       FROM photo_submissions ps
+       LEFT JOIN routes r ON CAST(ps.route_id AS TEXT) = r.route_id
+       LEFT JOIN subsections s ON CAST(ps.route_id AS TEXT) = s.route_id AND CAST(ps.subsection_id AS TEXT) = s.subsection_id
+       LEFT JOIN checkpoints c ON ps.checkpoint_id = c.id
+       LEFT JOIN entities e ON c.entity_id = e.id
+       LEFT JOIN users u ON ps.user_id = u.id
+       LEFT JOIN users rev ON ps.reviewer_id = rev.id
+       WHERE ps.id = ?`,
       [photoId]
     );
     const row = result.rows[0] as Record<string, unknown> | undefined;

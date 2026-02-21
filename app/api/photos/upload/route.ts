@@ -46,9 +46,7 @@ function buildPhotoFilename(params: {
   dateStr: string;
   timeStr: string;
 }): string {
-  const stageLetter =
-    params.executionStage === 'Before' || params.executionStage === 'B' ? 'B' :
-    params.executionStage === 'Ongoing' || params.executionStage === 'O' ? 'O' : 'A';
+  const stageLetter = params.executionStage === 'S' || params.executionStage === 'M' ? params.executionStage : 'M';
   return `${params.routeId}-${params.subsectionId}-${params.entityCode}-${params.checkpointCode}-${stageLetter}-${params.photoIndex}-${params.dateStr}-${params.timeStr}.${params.extension}`;
 }
 
@@ -84,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     if (!file || !routeId || !subsectionId || !executionStage) {
       return NextResponse.json(
-        { error: 'Missing required fields: routeId, subsectionId, and executionStage (B, O, or A) are required' },
+        { error: 'Missing required fields: routeId, subsectionId, and executionStage (S or M) are required' },
         { status: 400 }
       );
     }

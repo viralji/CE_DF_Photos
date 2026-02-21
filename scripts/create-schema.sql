@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
   execution_before INTEGER DEFAULT 0,
   execution_ongoing INTEGER DEFAULT 0,
   execution_after INTEGER DEFAULT 0,
+  checkpoint_type TEXT DEFAULT 'Multiple',
   photo_type INTEGER,
   doc_type INTEGER,
   frequency TEXT,

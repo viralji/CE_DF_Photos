@@ -97,6 +97,7 @@ export default function AdminPage() {
     code?: string | null;
     display_order: number;
     execution_stage?: string | null;
+    checkpoint_type?: string | null;
   }[];
   const entities = (entitiesData?.entities ?? []) as { id: number; name: string; code: string; display_order: number }[];
   const subsectionEmailsList = (subsectionEmailsData?.emails ?? []) as { id: number; route_id: string; subsection_id: string; email: string }[];
@@ -110,7 +111,7 @@ export default function AdminPage() {
   const [editingCheckpointName, setEditingCheckpointName] = useState('');
   const [editingCheckpointCode, setEditingCheckpointCode] = useState('');
   const [editingCheckpointOrder, setEditingCheckpointOrder] = useState(0);
-  const [editingCheckpointStage, setEditingCheckpointStage] = useState<string>('Ongoing');
+  const [editingCheckpointType, setEditingCheckpointType] = useState<string>('Multiple');
   const [subsectionEmailsByKey, setSubsectionEmailsByKey] = useState<Record<string, string[]>>({});
   const [emailFilterRouteId, setEmailFilterRouteId] = useState('');
   const [emailFilterSubsectionKey, setEmailFilterSubsectionKey] = useState('');
@@ -365,13 +366,13 @@ export default function AdminPage() {
     queryClient.invalidateQueries({ queryKey: ['checkpoints'] });
   }
 
-  const STAGE_OPTIONS = ['Before', 'Ongoing', 'After'] as const;
+  const CHECKPOINT_TYPE_OPTIONS = ['Single', 'Multiple'] as const;
 
-  async function createCheckpoint(entity_id: number, checkpoint_name: string, code: string, execution_stage: string) {
+  async function createCheckpoint(entity_id: number, checkpoint_name: string, code: string, checkpoint_type: string) {
     const res = await fetch('/api/checkpoints', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entity_id, checkpoint_name: checkpoint_name.trim(), code: code.trim() || undefined, execution_stage: execution_stage === 'Before' || execution_stage === 'Ongoing' || execution_stage === 'After' ? execution_stage : 'Ongoing' }),
+      body: JSON.stringify({ entity_id, checkpoint_name: checkpoint_name.trim(), code: code.trim() || undefined, checkpoint_type: checkpoint_type === 'Single' || checkpoint_type === 'Multiple' ? checkpoint_type : 'Multiple' }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -384,11 +385,11 @@ export default function AdminPage() {
     queryClient.invalidateQueries({ queryKey: ['checkpoints'] });
   }
 
-  async function updateCheckpoint(id: number, entity_id: number, checkpoint_name: string, code: string, display_order: number, execution_stage: string) {
+  async function updateCheckpoint(id: number, entity_id: number, checkpoint_name: string, code: string, display_order: number, checkpoint_type: string) {
     const res = await fetch(`/api/checkpoints/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entity_id, checkpoint_name: checkpoint_name.trim(), code: code.trim(), display_order, execution_stage: execution_stage === 'Before' || execution_stage === 'Ongoing' || execution_stage === 'After' ? execution_stage : 'Ongoing' }),
+      body: JSON.stringify({ entity_id, checkpoint_name: checkpoint_name.trim(), code: code.trim(), display_order, checkpoint_type: checkpoint_type === 'Single' || checkpoint_type === 'Multiple' ? checkpoint_type : 'Multiple' }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -790,7 +791,7 @@ export default function AdminPage() {
 
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h2 className="font-semibold text-slate-900 text-sm mb-1">Checkpoints</h2>
-          <p className="text-xs text-slate-500 mb-3">Photo filenames use entity code and checkpoint code. Category is the execution stage (Before / Ongoing / After) for capture.</p>
+          <p className="text-xs text-slate-500 mb-3">Photo filenames use entity code and checkpoint code. Type: Single = 1 photo only, Multiple = allows multiple photos.</p>
           {checkpoints.length === 0 && entities.length === 0 ? (
             <p className="text-slate-500 text-sm">No checkpoints yet. Add entities above, then add checkpoints below.</p>
           ) : (
@@ -841,14 +842,14 @@ export default function AdminPage() {
                               {(() => { const norm = (editingCheckpointCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3); const dup = norm.length === 3 && checkpoints.some((o) => o.entity_id === editingCheckpointEntityId && o.id !== editingCheckpointId && (o.code || '').toUpperCase() === norm); return dup ? <span className="text-red-600 text-xs ml-1 block">Code already in use for this entity</span> : null; })()}
                             </td>
                             <td className="p-2">
-                              <select value={editingCheckpointStage} onChange={(ev) => setEditingCheckpointStage(ev.target.value)} className="px-2 py-1 border border-slate-300 rounded text-sm">
-                                {STAGE_OPTIONS.map((s) => (
-                                  <option key={s} value={s}>{s}</option>
+                              <select value={editingCheckpointType} onChange={(ev) => setEditingCheckpointType(ev.target.value)} className="px-2 py-1 border border-slate-300 rounded text-sm">
+                                {CHECKPOINT_TYPE_OPTIONS.map((t) => (
+                                  <option key={t} value={t}>{t}</option>
                                 ))}
                               </select>
                             </td>
                             <td className="p-2">
-                              {(() => { const norm = (editingCheckpointCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3); const dup = norm.length === 3 && checkpoints.some((o) => o.entity_id === editingCheckpointEntityId && o.id !== editingCheckpointId && (o.code || '').toUpperCase() === norm); return <><button type="button" onClick={() => updateCheckpoint(c.id, editingCheckpointEntityId, editingCheckpointName, editingCheckpointCode, editingCheckpointOrder, editingCheckpointStage)} disabled={dup} className="text-blue-600 hover:text-blue-800 text-xs mr-2 disabled:opacity-50">Save</button>
+                              {(() => { const norm = (editingCheckpointCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3); const dup = norm.length === 3 && checkpoints.some((o) => o.entity_id === editingCheckpointEntityId && o.id !== editingCheckpointId && (o.code || '').toUpperCase() === norm); return <><button type="button" onClick={() => updateCheckpoint(c.id, editingCheckpointEntityId, editingCheckpointName, editingCheckpointCode, editingCheckpointOrder, editingCheckpointType)} disabled={dup} className="text-blue-600 hover:text-blue-800 text-xs mr-2 disabled:opacity-50">Save</button>
                               <button type="button" onClick={() => setEditingCheckpointId(null)} className="text-slate-600 hover:text-slate-800 text-xs">Cancel</button></>; })()}
                             </td>
                           </>
@@ -859,15 +860,13 @@ export default function AdminPage() {
                             <td className="p-2 font-mono text-blue-600">{c.code ?? '—'}</td>
                             <td className="p-2">
                               <span className={`shrink-0 px-1.5 py-0.5 rounded text-xs font-medium ${
-                                (c.execution_stage ?? 'Ongoing') === 'Before' ? 'bg-blue-100 text-blue-700' :
-                                (c.execution_stage ?? 'Ongoing') === 'Ongoing' ? 'bg-amber-100 text-amber-700' :
-                                'bg-green-100 text-green-700'
+                                (c.checkpoint_type === 'Single' || (!c.checkpoint_type && (c.execution_stage === 'Before' || c.execution_stage === 'After'))) ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
                               }`}>
-                                {c.execution_stage ?? 'Ongoing'}
+                                {c.checkpoint_type === 'Single' || (!c.checkpoint_type && (c.execution_stage === 'Before' || c.execution_stage === 'After')) ? 'Single' : 'Multiple'}
                               </span>
                             </td>
                             <td className="p-2">
-                              <button type="button" onClick={() => { setEditingCheckpointId(c.id); setEditingCheckpointEntityId(c.entity_id); setEditingCheckpointName(c.checkpoint_name); setEditingCheckpointCode(c.code ?? ''); setEditingCheckpointOrder(c.display_order); setEditingCheckpointStage((c.execution_stage === 'Before' || c.execution_stage === 'Ongoing' || c.execution_stage === 'After') ? c.execution_stage : 'Ongoing'); }} className="text-blue-600 hover:text-blue-800 text-xs mr-2">Edit</button>
+                              <button type="button" onClick={() => { setEditingCheckpointId(c.id); setEditingCheckpointEntityId(c.entity_id); setEditingCheckpointName(c.checkpoint_name); setEditingCheckpointCode(c.code ?? ''); setEditingCheckpointOrder(c.display_order); setEditingCheckpointType((c.checkpoint_type === 'Single' || c.checkpoint_type === 'Multiple') ? c.checkpoint_type : (c.execution_stage === 'Before' || c.execution_stage === 'After') ? 'Single' : 'Multiple'); }} className="text-blue-600 hover:text-blue-800 text-xs mr-2">Edit</button>
                               <button type="button" onClick={() => deleteCheckpoint(c.id)} className="text-red-600 hover:text-red-800 text-xs mr-2">Delete</button>
                             </td>
                           </>
@@ -879,7 +878,7 @@ export default function AdminPage() {
                 </table>
                 <p className="text-xs text-slate-500 mt-3">{checkpoints.length} checkpoint{checkpoints.length !== 1 ? 's' : ''} total.</p>
               </div>
-              <form className="mt-3 flex flex-wrap gap-2 items-end" onSubmit={(ev) => { ev.preventDefault(); const entityId = (ev.target as HTMLFormElement).querySelector<HTMLSelectElement>('[name="new-checkpoint-entity"]'); const nameEl = (ev.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="new-checkpoint-name"]'); const codeEl = (ev.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="new-checkpoint-code"]'); const stageEl = (ev.target as HTMLFormElement).querySelector<HTMLSelectElement>('[name="new-checkpoint-stage"]'); if (entityId?.value && nameEl?.value.trim()) { createCheckpoint(Number(entityId.value), nameEl.value.trim(), codeEl?.value.trim() ?? '', stageEl?.value ?? 'Ongoing'); nameEl.value = ''; if (codeEl) codeEl.value = ''; } }}>
+              <form className="mt-3 flex flex-wrap gap-2 items-end" onSubmit={(ev) => { ev.preventDefault(); const entityId = (ev.target as HTMLFormElement).querySelector<HTMLSelectElement>('[name="new-checkpoint-entity"]'); const nameEl = (ev.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="new-checkpoint-name"]'); const codeEl = (ev.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="new-checkpoint-code"]'); const typeEl = (ev.target as HTMLFormElement).querySelector<HTMLSelectElement>('[name="new-checkpoint-stage"]'); if (entityId?.value && nameEl?.value.trim()) { createCheckpoint(Number(entityId.value), nameEl.value.trim(), codeEl?.value.trim() ?? '', typeEl?.value ?? 'Multiple'); nameEl.value = ''; if (codeEl) codeEl.value = ''; } }}>
                 <select id="new-checkpoint-entity" name="new-checkpoint-entity" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-40" required>
                   <option value="">Entity…</option>
                   {entities.map((ent) => (
@@ -889,8 +888,8 @@ export default function AdminPage() {
                 <input id="new-checkpoint-name" name="new-checkpoint-name" type="text" placeholder="Checkpoint name" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-48" required />
                 <input id="new-checkpoint-code" name="new-checkpoint-code" type="text" placeholder="Code (3 chars)" maxLength={3} className="px-2 py-1.5 border border-slate-300 rounded text-sm w-20 font-mono" />
                 <select id="new-checkpoint-stage" name="new-checkpoint-stage" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-28">
-                  {STAGE_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                  {CHECKPOINT_TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
                 <button type="submit" className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Add checkpoint</button>

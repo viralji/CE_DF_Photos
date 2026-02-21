@@ -75,7 +75,13 @@ export default function ViewPhotoPage() {
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <PhotoImage photoId={photo.id} alt={photo.filename || ''} className="w-full h-auto block" />
           <div className="p-3 border-t border-slate-100 space-y-2">
-            <p className="text-slate-600"><strong>{photo.checkpoint_name}</strong> · {photo.entity} · {photo.execution_stage} · <span className="capitalize">{String(statusLabel)}</span></p>
+            <p className="text-slate-600"><strong>{photo.checkpoint_name}</strong> · {photo.entity} · {(photo.execution_stage === 'S' || photo.execution_stage === 'B') ? 'Single' : 'Multiple'} · <span className="capitalize">{String(statusLabel)}</span></p>
+            <div className="text-sm text-slate-500">
+              {(photo.user_name || photo.user_email) && <p>Submitted by: {photo.user_name || photo.user_email}</p>}
+              {photo.status === 'approved' && (photo.reviewer_name || photo.reviewer_email) && (
+                <p>Approved by: {photo.reviewer_name || photo.reviewer_email}{photo.reviewed_at ? ` (${new Date(photo.reviewed_at).toLocaleString()})` : ''}</p>
+              )}
+            </div>
             {comments.length > 0 && (
               <div className="mt-4 pt-3 border-t border-slate-100">
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">Comment history</h4>

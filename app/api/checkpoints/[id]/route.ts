@@ -25,8 +25,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     const body = await request.json();
     const db = getDb();
-    const existing = db.prepare('SELECT id, entity_id, checkpoint_name, code, display_order, execution_stage FROM checkpoints WHERE id = ?').get(checkpointId) as
-      | { id: number; entity_id: number; checkpoint_name: string; code: string | null; display_order: number; execution_stage: string | null }
+    const existing = db.prepare('SELECT id, entity_id, checkpoint_name, code, display_order, execution_stage, checkpoint_type FROM checkpoints WHERE id = ?').get(checkpointId) as
+      | { id: number; entity_id: number; checkpoint_name: string; code: string | null; display_order: number; execution_stage: string | null; checkpoint_type: string | null }
       | undefined;
     if (!existing) {
       return NextResponse.json({ error: 'Checkpoint not found' }, { status: 404 });
@@ -36,8 +36,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const checkpoint_name = typeof body.checkpoint_name === 'string' ? body.checkpoint_name.trim() : existing.checkpoint_name;
     const code = body.code !== undefined ? normalizeCheckpointCode(typeof body.code === 'string' ? body.code : String(body.code), checkpoint_name) : (existing.code ?? to3CharCode(existing.checkpoint_name));
     const display_order = typeof body.display_order === 'number' ? body.display_order : undefined;
-    const rawStage = typeof body.execution_stage === 'string' ? body.execution_stage.trim() : '';
-    const execution_stage = rawStage === 'Before' || rawStage === 'Ongoing' || rawStage === 'After' ? rawStage : (existing.execution_stage === 'Before' || existing.execution_stage === 'Ongoing' || existing.execution_stage === 'After' ? existing.execution_stage : 'Ongoing');
+    const rawType = typeof body.checkpoint_type === 'string' ? body.checkpoint_type.trim() : '';
+    const checkpoint_type = rawType === 'Single' || rawType === 'Multiple' ? rawType : (existing.checkpoint_type === 'Single' || existing.checkpoint_type === 'Multiple' ? existing.checkpoint_type : 'Multiple');
+    const execution_stage = checkpoint_type === 'Single' ? 'Before' : 'Ongoing';
 
     if (entity_id !== existing.entity_id || checkpoint_name !== existing.checkpoint_name) {
       const entityExists = db.prepare('SELECT id FROM entities WHERE id = ?').get(entity_id);
@@ -66,27 +67,29 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     try {
       if (display_order !== undefined) {
         runUpdate(
-          'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, display_order = ?, execution_stage = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, display_order = ?, execution_stage = ?, checkpoint_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           entity_id,
           checkpoint_name,
           code,
           display_order,
           execution_stage,
+          checkpoint_type,
           checkpointId
         );
       } else {
         runUpdate(
-          'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, execution_stage = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, execution_stage = ?, checkpoint_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           entity_id,
           checkpoint_name,
           code,
           execution_stage,
+          checkpoint_type,
           checkpointId
         );
       }
     } catch (e) {
       const msg = (e as Error).message;
-      if (msg.includes('no such column: execution_stage')) {
+      if (msg.includes('no such column')) {
         runUpdate(
           'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           entity_id,

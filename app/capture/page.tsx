@@ -5,8 +5,9 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { CameraCapture } from '@/components/camera/CameraCapture';
+import { getAgingDays, formatAging, getAgingBadgeClass } from '@/lib/aging';
 
-const STAGE_MAP: Record<string, string> = { Before: 'B', Ongoing: 'O', After: 'A' };
+const TYPE_MAP: Record<string, string> = { Single: 'S', Multiple: 'M' };
 
 async function getRoutes() {
   const res = await fetch('/api/routes');
@@ -45,7 +46,7 @@ async function getComments(photoId: number) {
   return res.json();
 }
 
-type RequiredRow = { checkpointId: number; checkpointName: string; entity: string; stage: string; photoTypeNumber: number };
+type RequiredRow = { checkpointId: number; checkpointName: string; entity: string; checkpointType: string; photoTypeNumber: number };
 
 export default function CapturePage() {
   const [routeId, setRouteId] = useState<string | ''>('');
@@ -119,16 +120,17 @@ export default function CapturePage() {
     entity: string;
     checkpoint_name: string;
     execution_stage?: string | null;
+    checkpoint_type?: string | null;
     photo_type?: number;
   }[];
 
   const requiredRows = useMemo(() => {
     const rows: RequiredRow[] = [];
     checkpoints.forEach((c) => {
-      const stage = (c.execution_stage === 'Before' || c.execution_stage === 'Ongoing' || c.execution_stage === 'After') ? c.execution_stage : 'Ongoing';
-      const photoSlots = Math.max(1, c.photo_type ?? 1);
+      const checkpointType = (c.checkpoint_type === 'Single' || c.checkpoint_type === 'Multiple') ? c.checkpoint_type : (c.execution_stage === 'Before' || c.execution_stage === 'After') ? 'Single' : 'Multiple';
+      const photoSlots = checkpointType === 'Single' ? 1 : Math.max(1, c.photo_type ?? 1);
       for (let i = 1; i <= photoSlots; i++) {
-        rows.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', stage, photoTypeNumber: i });
+        rows.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', checkpointType, photoTypeNumber: i });
       }
     });
     return rows;
@@ -137,8 +139,7 @@ export default function CapturePage() {
   const maxPhotoTypeByKey = useMemo(() => {
     const map = new Map<string, number>();
     photos.forEach((p) => {
-      const stageDisplay = p.execution_stage === 'B' ? 'Before' : p.execution_stage === 'O' ? 'Ongoing' : p.execution_stage === 'A' ? 'After' : 'Ongoing';
-      const key = `${p.checkpoint_id}-${stageDisplay}`;
+      const key = `${p.checkpoint_id}`;
       const current = map.get(key) ?? 0;
       map.set(key, Math.max(current, p.photo_type_number));
     });
@@ -148,15 +149,16 @@ export default function CapturePage() {
   const allRows = useMemo(() => {
     const extra: RequiredRow[] = [];
     checkpoints.forEach((c) => {
-      const stage = (c.execution_stage === 'Before' || c.execution_stage === 'Ongoing' || c.execution_stage === 'After') ? c.execution_stage : 'Ongoing';
-      const key = `${c.id}-${stage}`;
+      const checkpointType = (c.checkpoint_type === 'Single' || c.checkpoint_type === 'Multiple') ? c.checkpoint_type : (c.execution_stage === 'Before' || c.execution_stage === 'After') ? 'Single' : 'Multiple';
+      if (checkpointType === 'Single') return;
+      const key = `${c.id}`;
       const N = Math.max(1, c.photo_type ?? 1);
       const maxFromPhotos = maxPhotoTypeByKey.get(key) ?? 0;
       const existingExtra = Math.max(0, maxFromPhotos - N);
       const emptyExtra = extraSlotsByKey[key] ?? 0;
       const extraCount = Math.max(existingExtra, emptyExtra);
       for (let i = 1; i <= extraCount; i++) {
-        extra.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', stage, photoTypeNumber: N + i });
+        extra.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', checkpointType, photoTypeNumber: N + i });
       }
     });
     const combined = [...requiredRows, ...extra];
@@ -198,6 +200,15 @@ export default function CapturePage() {
       .map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
   }, [photos, routeId, subsectionId]);
 
+  const oldestInSubsectionDays = useMemo(() => {
+    const nonApproved = photos.filter(
+      (p) => p.status && ['pending', 'qc_required', 'nc'].includes(String(p.status).toLowerCase()) && p.created_at
+    );
+    if (nonApproved.length === 0) return null;
+    const days = Math.max(...nonApproved.map((p) => getAgingDays(p.created_at)));
+    return days;
+  }, [photos]);
+
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocationStatus('denied');
@@ -217,7 +228,7 @@ export default function CapturePage() {
   }, []);
 
   function getRowKey(row: RequiredRow) {
-    return `${row.checkpointId}-${row.stage}-${row.photoTypeNumber}`;
+    return `${row.checkpointId}-${row.photoTypeNumber}`;
   }
 
   function openCamera(row: RequiredRow, forResubmitPhotoId: number | null = null) {
@@ -268,7 +279,7 @@ export default function CapturePage() {
         formData.append('routeId', routeId);
         formData.append('subsectionId', subsectionId);
         formData.append('checkpointId', String(row.checkpointId));
-        formData.append('executionStage', STAGE_MAP[row.stage] || 'O');
+        formData.append('executionStage', TYPE_MAP[row.checkpointType] || 'M');
         formData.append('photoTypeNumber', String(row.photoTypeNumber));
         formData.append('photoCategory', row.entity || '');
         if (geo) {
@@ -302,12 +313,7 @@ export default function CapturePage() {
   }
 
   function findPhotoForRow(row: RequiredRow) {
-    return photos.find(
-      (p) =>
-        p.checkpoint_id === row.checkpointId &&
-        p.execution_stage === STAGE_MAP[row.stage] &&
-        p.photo_type_number === row.photoTypeNumber
-    );
+    return photos.find((p) => p.checkpoint_id === row.checkpointId && p.photo_type_number === row.photoTypeNumber);
   }
 
   async function handleAddComment() {
@@ -489,16 +495,23 @@ export default function CapturePage() {
 
         {hasSelection && allRows.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-lg">
-            <div className="px-3 py-1 border-b border-slate-200 flex items-center justify-between bg-slate-50 rounded-t-lg">
+            <div className="px-3 py-1 border-b border-slate-200 flex items-center justify-between bg-slate-50 rounded-t-lg flex-wrap gap-2">
               <h2 className="font-semibold text-slate-800 text-xs">Required Photos</h2>
-              <span className="text-slate-500 text-xs">{photos.length} / {allRows.length}</span>
+              <div className="flex items-center gap-2">
+                {oldestInSubsectionDays != null && oldestInSubsectionDays > 0 && (
+                  <span className="text-slate-600 text-xs" title="Oldest non-approved in this subsection">
+                    Oldest: {formatAging(oldestInSubsectionDays)}
+                  </span>
+                )}
+                <span className="text-slate-500 text-xs">{photos.length} / {allRows.length}</span>
+              </div>
             </div>
             <div className="divide-y divide-slate-100">
               {rowsByEntity.map(([entityName, rows]) => {
                 const byCheckpointKey = new Map<string, RequiredRow[]>();
                 const keyOrder: string[] = [];
                 rows.forEach((row) => {
-                  const key = `${row.checkpointId}-${row.stage}`;
+                  const key = `${row.checkpointId}`;
                   if (!byCheckpointKey.has(key)) {
                     byCheckpointKey.set(key, []);
                     keyOrder.push(key);
@@ -528,6 +541,10 @@ export default function CapturePage() {
                     const needsAttention = rawStatus === 'qc_required' || rawStatus === 'nc';
                     const isNC = rawStatus === 'nc';
                     const statusLabel = rawStatus === 'qc_required' ? 'QC Required' : rawStatus === 'nc' ? 'NC' : null;
+                    const showRowAging = hasPhoto && !isApproved && photo && (photo as { created_at?: string | null }).created_at;
+                    const rowAgingDays = showRowAging ? getAgingDays((photo as { created_at?: string | null }).created_at) : 0;
+                    const rowAgingLabel = showRowAging ? formatAging(rowAgingDays) : '';
+                    const rowAgingBadgeClass = showRowAging ? getAgingBadgeClass(rowAgingDays) : '';
                     const rowBg =
                       isApproved ? 'bg-green-50 border-l-green-400'
                       : isPending ? 'bg-slate-100 border-l-slate-400'
@@ -564,14 +581,17 @@ export default function CapturePage() {
                         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-slate-900 text-sm truncate">{row.checkpointName}</span>
                           <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            row.stage === 'Before' ? 'bg-blue-100 text-blue-700' :
-                            row.stage === 'Ongoing' ? 'bg-amber-100 text-amber-700' :
-                            'bg-green-100 text-green-700'
+                            row.checkpointType === 'Single' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
                           }`}>
-                            {row.stage}
+                            {row.checkpointType}
                             {row.photoTypeNumber > 1 ? ` #${row.photoTypeNumber}` : ''}
                           </span>
                           {statusLabel && <span className={`text-[10px] font-medium ${isNC ? 'text-red-700' : 'text-amber-700'}`}>{statusLabel}</span>}
+                          {showRowAging && rowAgingLabel && (
+                            <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${rowAgingBadgeClass}`} title={`Submitted ${rowAgingDays} day${rowAgingDays !== 1 ? 's' : ''} ago`}>
+                              {rowAgingLabel}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {hasPhoto && (
@@ -617,7 +637,7 @@ export default function CapturePage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                           </button>
-                          {isLastInGroup && (
+                          {isLastInGroup && row.checkpointType === 'Multiple' && (
                             <button
                               type="button"
                               onClick={() => setExtraSlotsByKey((prev) => ({ ...prev, [groupKey]: (prev[groupKey] ?? 0) + 1 }))}

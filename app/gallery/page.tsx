@@ -178,10 +178,9 @@ function GalleryPageContent() {
                                 className="w-full h-full object-cover"
                               />
                               <span className={`absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[10px] font-medium text-white ${
-                                photo.execution_stage === 'B' ? 'bg-blue-500' :
-                                photo.execution_stage === 'O' ? 'bg-amber-500' : 'bg-green-600'
+                                (photo.execution_stage === 'S' || photo.execution_stage === 'B') ? 'bg-blue-500' : 'bg-amber-500'
                               }`}>
-                                {photo.execution_stage === 'B' ? 'B' : photo.execution_stage === 'O' ? 'O' : 'A'}
+                                {photo.execution_stage === 'S' || photo.execution_stage === 'B' ? 'Single' : 'Multiple'}
                               </span>
                               {photo.status === 'approved' && (
                                 <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">

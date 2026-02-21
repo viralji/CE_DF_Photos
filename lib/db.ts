@@ -229,6 +229,25 @@ export function getDb(): Database.Database {
     } catch {
       // ignore
     }
+    // checkpoint_type: Single (1 photo) vs Multiple (multiple photos). Before/After -> Single, Ongoing -> Multiple.
+    try {
+      const cpCols = db.prepare("PRAGMA table_info(checkpoints)").all() as { name: string }[];
+      const hasCheckpointType = cpCols.some((c) => c.name === 'checkpoint_type');
+      if (!hasCheckpointType) {
+        db.exec("ALTER TABLE checkpoints ADD COLUMN checkpoint_type TEXT DEFAULT 'Multiple'");
+        db.exec("UPDATE checkpoints SET checkpoint_type = CASE WHEN execution_stage IN ('Before','After') THEN 'Single' ELSE 'Multiple' END");
+      }
+    } catch {
+      // ignore
+    }
+    // photo_submissions execution_stage: migrate B/O/A to S/M for Single/Multiple display
+    try {
+      db.prepare("UPDATE photo_submissions SET execution_stage = 'S' WHERE execution_stage IN ('B','Before')").run();
+      db.prepare("UPDATE photo_submissions SET execution_stage = 'S' WHERE execution_stage IN ('A','After')").run();
+      db.prepare("UPDATE photo_submissions SET execution_stage = 'M' WHERE execution_stage IN ('O','Ongoing')").run();
+    } catch {
+      // ignore
+    }
   }
   return db;
 }

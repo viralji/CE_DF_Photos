@@ -14,8 +14,8 @@ export const MAX_PHOTO_CATEGORY_LENGTH = 200;
 /** Max length for routeId / subsectionId query params. */
 export const MAX_ROUTE_SUBSECTION_ID_LENGTH = 200;
 
-/** Allowed execution stage values for photo upload. */
-export const ALLOWED_EXECUTION_STAGES = ['B', 'O', 'A'] as const;
+/** Allowed execution stage values for photo upload (S=Single, M=Multiple). */
+export const ALLOWED_EXECUTION_STAGES = ['S', 'M'] as const;
 
 /**
  * Trim and limit string length. Use for free-text user input before storing.
@@ -36,12 +36,12 @@ export function parsePositiveInt(value: string | null | undefined): number | nul
 }
 
 /**
- * Validate execution stage for photo upload. Returns B, O, or A; otherwise null.
+ * Validate execution stage for photo upload. Returns S (Single) or M (Multiple); otherwise null.
  */
-export function sanitizeExecutionStage(value: string | null | undefined): 'B' | 'O' | 'A' | null {
+export function sanitizeExecutionStage(value: string | null | undefined): 'S' | 'M' | null {
   if (value == null || typeof value !== 'string') return null;
   const s = value.trim().toUpperCase();
-  if (ALLOWED_EXECUTION_STAGES.includes(s as 'B' | 'O' | 'A')) return s as 'B' | 'O' | 'A';
+  if (ALLOWED_EXECUTION_STAGES.includes(s as 'S' | 'M')) return s as 'S' | 'M';
   return null;
 }
 

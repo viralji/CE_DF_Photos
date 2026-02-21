@@ -75,7 +75,8 @@ for (const row of rows) {
   const before = row['Unnamed: 4'] === true || row['execution_before'] === 1 ? 1 : 0;
   const ongoing = row['Unnamed: 5'] === true || row['execution_ongoing'] === 1 ? 1 : 0;
   const after = row['Unnamed: 6'] === true || row['execution_after'] === 1 ? 1 : 0;
-  const execution_stage = before ? 'Before' : ongoing ? 'Ongoing' : after ? 'After' : 'Ongoing';
+  const checkpoint_type = (before || after) ? 'Single' : 'Multiple';
+  const execution_stage = checkpoint_type === 'Single' ? 'Before' : 'Ongoing';
   const photoType = typeof row['31'] === 'number' ? row['31'] : null;
   const cpCode = uniqueCheckpointCode(finalCheckpoint, checkpointUsedCodes);
   checkpoints.push({
@@ -88,7 +89,8 @@ for (const row of rows) {
     execution_before: before,
     execution_ongoing: ongoing,
     execution_after: after,
-    photo_type: photoType,
+    checkpoint_type,
+    photo_type: checkpoint_type === 'Single' ? 1 : photoType,
   });
 }
 
@@ -102,7 +104,7 @@ const db = new Database(dbPath);
 const insertEntity = db.prepare('INSERT OR IGNORE INTO entities (name, code, display_order) VALUES (?, ?, ?)');
 const getEntityId = db.prepare('SELECT id FROM entities WHERE name = ?');
 const insertCheckpoint = db.prepare(
-  `INSERT OR IGNORE INTO checkpoints (entity_id, checkpoint_name, code, display_order, evidence_type, execution_stage, execution_before, execution_ongoing, execution_after, photo_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  `INSERT OR IGNORE INTO checkpoints (entity_id, checkpoint_name, code, display_order, evidence_type, execution_stage, execution_before, execution_ongoing, execution_after, checkpoint_type, photo_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 for (const e of entities) {
@@ -113,7 +115,7 @@ for (const c of checkpoints) {
   const row = getEntityId.get(c.entityName);
   if (!row) continue;
   const photo = c.photo_type != null ? c.photo_type : null;
-  insertCheckpoint.run(row.id, c.checkpoint_name, c.code, c.display_order, c.evidence_type, c.execution_stage, c.execution_before, c.execution_ongoing, c.execution_after, photo);
+  insertCheckpoint.run(row.id, c.checkpoint_name, c.code, c.display_order, c.evidence_type, c.execution_stage, c.execution_before, c.execution_ongoing, c.execution_after, c.checkpoint_type, photo);
 }
 
 db.close();

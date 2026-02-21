@@ -64,19 +64,20 @@ export async function POST(request: NextRequest) {
     }
     const display_order = typeof body.display_order === 'number' ? body.display_order : (db.prepare('SELECT COALESCE(MAX(display_order), 0) + 1 AS next_order FROM checkpoints WHERE entity_id = ?').get(entity_id) as { next_order: number })?.next_order ?? 0;
     const evidence_type = typeof body.evidence_type === 'string' ? body.evidence_type : 'Photo';
-    const rawStage = typeof body.execution_stage === 'string' ? body.execution_stage.trim() : '';
-    const execution_stage = rawStage === 'Before' || rawStage === 'Ongoing' || rawStage === 'After' ? rawStage : 'Ongoing';
-    const execution_before = execution_stage === 'Before' ? 1 : 0;
-    const execution_ongoing = execution_stage === 'Ongoing' ? 1 : 0;
-    const execution_after = execution_stage === 'After' ? 1 : 0;
-    const photo_type = body.photo_type != null ? parseInt(String(body.photo_type), 10) : null;
+    const rawType = typeof body.checkpoint_type === 'string' ? body.checkpoint_type.trim() : '';
+    const checkpoint_type = rawType === 'Single' || rawType === 'Multiple' ? rawType : 'Multiple';
+    const execution_stage = checkpoint_type === 'Single' ? 'Before' : 'Ongoing';
+    const execution_before = checkpoint_type === 'Single' ? 1 : 0;
+    const execution_ongoing = checkpoint_type === 'Multiple' ? 1 : 0;
+    const execution_after = checkpoint_type === 'Single' ? 1 : 0;
+    const photo_type = checkpoint_type === 'Single' ? 1 : (body.photo_type != null ? parseInt(String(body.photo_type), 10) : null);
 
     const insertResult = db
       .prepare(
-        `INSERT INTO checkpoints (entity_id, checkpoint_name, code, display_order, evidence_type, execution_stage, execution_before, execution_ongoing, execution_after, photo_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO checkpoints (entity_id, checkpoint_name, code, display_order, evidence_type, execution_stage, execution_before, execution_ongoing, execution_after, checkpoint_type, photo_type)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(entity_id, checkpoint_name, code, display_order, evidence_type, execution_stage, execution_before, execution_ongoing, execution_after, photo_type);
+      .run(entity_id, checkpoint_name, code, display_order, evidence_type, execution_stage, execution_before, execution_ongoing, execution_after, checkpoint_type, photo_type);
     const newId = Number(insertResult.lastInsertRowid);
     const row = db.prepare('SELECT c.*, e.name AS entity, e.name AS entity_name, e.code AS entity_code FROM checkpoints c LEFT JOIN entities e ON c.entity_id = e.id WHERE c.id = ?').get(newId) as Record<string, unknown>;
     return NextResponse.json({ checkpoint: row });

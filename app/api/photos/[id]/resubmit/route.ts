@@ -34,8 +34,11 @@ function buildPhotoFilename(params: {
   timeStr: string;
 }): string {
   const stageLetter =
-    params.executionStage === 'Before' || params.executionStage === 'B' ? 'B' :
-    params.executionStage === 'Ongoing' || params.executionStage === 'O' ? 'O' : 'A';
+    params.executionStage === 'S' || params.executionStage === 'M'
+      ? params.executionStage
+      : (params.executionStage === 'B' || params.executionStage === 'Before' || params.executionStage === 'A' || params.executionStage === 'After')
+        ? 'S'
+        : 'M';
   return `${params.routeId}-${params.subsectionId}-${params.entityCode}-${params.checkpointCode}-${stageLetter}-${params.photoIndex}-${params.dateStr}-${params.timeStr}.${params.extension}`;
 }
 
