@@ -65,6 +65,7 @@ export default function AdminPage() {
   const [bulkMessage, setBulkMessage] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
   const [syncErpnextLoading, setSyncErpnextLoading] = useState(false);
+  const [backupDbLoading, setBackupDbLoading] = useState(false);
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
 
@@ -99,11 +100,12 @@ export default function AdminPage() {
     execution_stage?: string | null;
     checkpoint_type?: string | null;
   }[];
-  const entities = (entitiesData?.entities ?? []) as { id: number; name: string; code: string; display_order: number }[];
+  const entities = (entitiesData?.entities ?? []) as { id: number; name: string; code: string; display_order: number; allowed_distance?: number | null }[];
   const subsectionEmailsList = (subsectionEmailsData?.emails ?? []) as { id: number; route_id: string; subsection_id: string; email: string }[];
   const usersList = (usersData?.users ?? []) as { id: number; email: string; name: string | null; role: AllowedRole }[];
 
   const [editingEntityId, setEditingEntityId] = useState<number | null>(null);
+  const [editingEntityAllowedDistance, setEditingEntityAllowedDistance] = useState<string>('');
   const [editingEntityName, setEditingEntityName] = useState('');
   const [editingEntityCode, setEditingEntityCode] = useState('');
   const [editingCheckpointId, setEditingCheckpointId] = useState<number | null>(null);
@@ -274,11 +276,11 @@ export default function AdminPage() {
     queryClient.invalidateQueries({ queryKey: ['checkpoints'] });
   }
 
-  async function updateEntity(id: number, name: string, code: string, display_order: number) {
+  async function updateEntity(id: number, name: string, code: string, display_order: number, allowedDistance: number | null) {
     const res = await fetch(`/api/entities/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), code: code.trim(), display_order }),
+      body: JSON.stringify({ name: name.trim(), code: code.trim(), display_order, allowed_distance: allowedDistance }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -730,15 +732,16 @@ export default function AdminPage() {
         <div className="space-y-4">
         <div className="bg-white border border-slate-200 rounded-lg p-3">
           <h2 className="font-semibold text-slate-900 text-sm mb-1">Entities</h2>
-          <p className="text-xs text-slate-500 mb-2">Manage entities (display order and codes).</p>
+          <p className="text-xs text-slate-500 mb-2">Manage entities. Allowed distance (m): max distance between photos for this entity; empty = use app default from Settings.</p>
           <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs min-w-[420px]">
               <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                     <tr>
-                      <th className="text-left p-1.5 font-semibold text-slate-700">Order</th>
+                      <th className="text-left p-1.5 font-semibold text-slate-700 w-20">Order</th>
                       <th className="text-left p-1.5 font-semibold text-slate-700">Name</th>
-                      <th className="text-left p-1.5 font-semibold text-slate-700">Code</th>
-                      <th className="text-left p-1.5 font-semibold text-slate-700">Actions</th>
+                      <th className="text-left p-1.5 font-semibold text-slate-700 w-14">Code</th>
+                      <th className="text-left p-1.5 font-semibold text-slate-700 w-24">Allowed dist (m)</th>
+                      <th className="text-left p-1.5 font-semibold text-slate-700 w-28">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -755,15 +758,20 @@ export default function AdminPage() {
                         </td>
                     {editingEntityId === e.id ? (
                       <>
-                        <td className="p-1.5" colSpan={2}>
-                          <input type="text" value={editingEntityName} onChange={(ev) => setEditingEntityName(ev.target.value)} className="px-1.5 py-0.5 border border-slate-300 rounded text-xs w-32 mr-1.5" placeholder="Name" />
+                        <td className="p-1.5">
+                          <input type="text" value={editingEntityName} onChange={(ev) => setEditingEntityName(ev.target.value)} className="px-1.5 py-0.5 border border-slate-300 rounded text-xs w-32" placeholder="Name" />
+                        </td>
+                        <td className="p-1.5">
                           <input type="text" value={editingEntityCode} onChange={(ev) => setEditingEntityCode(ev.target.value)} maxLength={3} className="px-1.5 py-0.5 border border-slate-300 rounded text-xs w-12 font-mono" placeholder="Code" />
                           {entities.some((o) => o.id !== e.id && (o.code || '').toUpperCase() === (editingEntityCode || '').trim().toUpperCase()) && (
-                            <span className="text-red-600 text-xs ml-1">Code already in use</span>
+                            <span className="text-red-600 text-xs block">Code in use</span>
                           )}
                         </td>
                         <td className="p-1.5">
-                          <button type="button" onClick={() => updateEntity(e.id, editingEntityName, editingEntityCode, e.display_order)} disabled={entities.some((o) => o.id !== e.id && (o.code || '').toUpperCase() === (editingEntityCode || '').trim().toUpperCase())} className="text-blue-600 hover:text-blue-800 text-xs mr-1 disabled:opacity-50">Save</button>
+                          <input type="number" min={1} step={1} value={editingEntityAllowedDistance} onChange={(ev) => setEditingEntityAllowedDistance(ev.target.value)} className="px-1.5 py-0.5 border border-slate-300 rounded text-xs w-16" placeholder="App default" title="Max distance (m); empty = use Settings default" />
+                        </td>
+                        <td className="p-1.5 whitespace-nowrap">
+                          <button type="button" onClick={() => { const raw = editingEntityAllowedDistance.trim(); const ad = raw === '' ? null : (Number.isFinite(Number(raw)) && Number(raw) > 0 ? Math.floor(Number(raw)) : null); updateEntity(e.id, editingEntityName, editingEntityCode, e.display_order, ad); }} disabled={entities.some((o) => o.id !== e.id && (o.code || '').toUpperCase() === (editingEntityCode || '').trim().toUpperCase())} className="text-blue-600 hover:text-blue-800 text-xs mr-1 disabled:opacity-50">Save</button>
                           <button type="button" onClick={() => { setEditingEntityId(null); }} className="text-slate-600 hover:text-slate-800 text-xs">Cancel</button>
                         </td>
                       </>
@@ -771,8 +779,9 @@ export default function AdminPage() {
                       <>
                         <td className="p-1.5 font-medium text-slate-900">{e.name}</td>
                         <td className="p-1.5 font-mono text-blue-600">{e.code}</td>
-                        <td className="p-1.5">
-                          <button type="button" onClick={() => { setEditingEntityId(e.id); setEditingEntityName(e.name); setEditingEntityCode(e.code); }} className="text-blue-600 hover:text-blue-800 text-xs mr-1">Edit</button>
+                        <td className="p-1.5 text-slate-600">{e.allowed_distance != null ? e.allowed_distance : '—'}</td>
+                        <td className="p-1.5 whitespace-nowrap">
+                          <button type="button" onClick={() => { setEditingEntityId(e.id); setEditingEntityName(e.name); setEditingEntityCode(e.code); setEditingEntityAllowedDistance(e.allowed_distance != null ? String(e.allowed_distance) : ''); }} className="text-blue-600 hover:text-blue-800 text-xs mr-1">Edit</button>
                           <button type="button" onClick={() => deleteEntity(e.id)} className="text-red-600 hover:text-red-800 text-xs mr-1">Delete</button>
                         </td>
                       </>
@@ -1103,7 +1112,7 @@ export default function AdminPage() {
           <h2 className="font-semibold text-slate-900 text-sm mb-3">Capture rules</h2>
 
           <div className="mb-4">
-            <p className="text-xs text-slate-500 mb-2">Enter maximum allowed distance (m). If set, capture is allowed only when the user is within this distance of the nearest existing photo in the subsection. The first photo in a subsection is always allowed. Leave empty or disable for no limit.</p>
+            <p className="text-xs text-slate-500 mb-2">Default maximum distance (m): used when an entity has no &quot;Allowed dist (m)&quot; set in Entities &amp; Checkpoints. If set, capture is allowed only when within this distance of the nearest existing photo in the subsection. First photo in a subsection is always allowed. Leave empty or disable for no limit.</p>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 key={`max-dist-${meData?.maxCaptureDistanceMeters ?? 'none'}`}
@@ -1168,6 +1177,48 @@ export default function AdminPage() {
                 Disable
               </button>
             </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-200">
+            <h2 className="font-semibold text-slate-900 text-sm mb-2">Database backup</h2>
+            <p className="text-xs text-slate-500 mb-2">Download the full SQLite database file as a backup. Use this to keep a copy before major changes or for disaster recovery.</p>
+            <button
+              type="button"
+              disabled={backupDbLoading}
+              onClick={async () => {
+                setBackupDbLoading(true);
+                setMessage('');
+                try {
+                  const res = await fetch('/api/admin/backup-db', { credentials: 'include' });
+                  if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    setMessage(`❌ ${data?.error ?? 'Download failed'}`);
+                    return;
+                  }
+                  const blob = await res.blob();
+                  const disposition = res.headers.get('Content-Disposition');
+                  const match = disposition?.match(/filename="([^"]+)"/);
+                  const filename = match?.[1] ?? `ce_df_photos_backup_${new Date().toISOString().slice(0, 10)}.db`;
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = filename;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  setMessage('✓ Backup downloaded.');
+                  scheduleMessageClear();
+                } catch (e) {
+                  setMessage(`❌ ${(e as Error).message}`);
+                } finally {
+                  setBackupDbLoading(false);
+                }
+              }}
+              className="px-4 py-2 bg-slate-700 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {backupDbLoading ? 'Preparing…' : 'Download DB backup'}
+            </button>
           </div>
 
           <div className="pt-4 border-t border-slate-200">

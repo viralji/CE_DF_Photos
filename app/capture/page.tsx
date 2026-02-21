@@ -46,7 +46,7 @@ async function getComments(photoId: number) {
   return res.json();
 }
 
-type RequiredRow = { checkpointId: number; checkpointName: string; entity: string; checkpointType: string; photoTypeNumber: number };
+type RequiredRow = { checkpointId: number; checkpointName: string; entity: string; entityId: number; entityAllowedDistance: number | null; checkpointType: string; photoTypeNumber: number };
 
 export default function CapturePage() {
   const [routeId, setRouteId] = useState<string | ''>('');
@@ -80,7 +80,7 @@ export default function CapturePage() {
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: getRoutes });
   const { data: meData } = useQuery({ queryKey: ['me'], queryFn: getMe });
-  const maxCaptureDistanceMeters = (meData?.maxCaptureDistanceMeters ?? null) as number | null;
+  const appDefaultMaxDistanceMeters = (meData?.maxCaptureDistanceMeters ?? null) as number | null;
   const maxGpsAccuracyMeters = (meData?.maxGpsAccuracyMeters ?? null) as number | null;
   const { data: subsectionsData } = useQuery({
     queryKey: ['subsections', routeId],
@@ -117,11 +117,13 @@ export default function CapturePage() {
   }[];
   const checkpoints = (checkpointsData?.checkpoints ?? []) as {
     id: number;
+    entity_id: number;
     entity: string;
     checkpoint_name: string;
     execution_stage?: string | null;
     checkpoint_type?: string | null;
     photo_type?: number;
+    entity_allowed_distance?: number | null;
   }[];
 
   const requiredRows = useMemo(() => {
@@ -129,8 +131,9 @@ export default function CapturePage() {
     checkpoints.forEach((c) => {
       const checkpointType = (c.checkpoint_type === 'Single' || c.checkpoint_type === 'Multiple') ? c.checkpoint_type : (c.execution_stage === 'Before' || c.execution_stage === 'After') ? 'Single' : 'Multiple';
       const photoSlots = checkpointType === 'Single' ? 1 : Math.max(1, c.photo_type ?? 1);
+      const entityAllowedDistance = c.entity_allowed_distance != null && Number.isFinite(c.entity_allowed_distance) && c.entity_allowed_distance > 0 ? c.entity_allowed_distance : null;
       for (let i = 1; i <= photoSlots; i++) {
-        rows.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', checkpointType, photoTypeNumber: i });
+        rows.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', entityId: c.entity_id, entityAllowedDistance, checkpointType, photoTypeNumber: i });
       }
     });
     return rows;
@@ -157,8 +160,9 @@ export default function CapturePage() {
       const existingExtra = Math.max(0, maxFromPhotos - N);
       const emptyExtra = extraSlotsByKey[key] ?? 0;
       const extraCount = Math.max(existingExtra, emptyExtra);
+      const entityAllowedDistance = c.entity_allowed_distance != null && Number.isFinite(c.entity_allowed_distance) && c.entity_allowed_distance > 0 ? c.entity_allowed_distance : null;
       for (let i = 1; i <= extraCount; i++) {
-        extra.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', checkpointType, photoTypeNumber: N + i });
+        extra.push({ checkpointId: c.id, checkpointName: c.checkpoint_name, entity: c.entity ?? '', entityId: c.entity_id, entityAllowedDistance, checkpointType, photoTypeNumber: N + i });
       }
     });
     const combined = [...requiredRows, ...extra];
@@ -363,8 +367,8 @@ export default function CapturePage() {
             </h2>
             <p id="distance-exceeded-desc" className="text-sm text-slate-600 mb-4">
               {distanceExceededValue != null
-                ? `You are about ${Math.round(distanceExceededValue)} m from the nearest existing photo in this subsection. Distance must be ${maxCaptureDistanceMeters ?? '?'} m or less to take a photo. Contact Admin to change the limit.`
-                : `You are farther than the allowed ${maxCaptureDistanceMeters ?? '?'} m from the nearest existing photo in this subsection. You cannot take a photo. Contact Admin to change the limit.`}
+                ? `You are about ${Math.round(distanceExceededValue)} m from the nearest existing photo in this subsection. Distance must be ${cameraForRow?.entityAllowedDistance ?? appDefaultMaxDistanceMeters ?? '?'} m or less to take a photo. Contact Admin to change the limit.`
+                : `You are farther than the allowed ${cameraForRow?.entityAllowedDistance ?? appDefaultMaxDistanceMeters ?? '?'} m from the nearest existing photo in this subsection. You cannot take a photo. Contact Admin to change the limit.`}
             </p>
             <button
               type="button"
@@ -685,8 +689,8 @@ export default function CapturePage() {
           }}
           disabled={locationStatus !== 'granted'}
           referenceLocations={subsectionPhotoLocations}
-          maxDistanceMeters={maxCaptureDistanceMeters ?? 40}
-          distanceCheckEnabled={maxCaptureDistanceMeters != null}
+          maxDistanceMeters={cameraForRow ? (cameraForRow.entityAllowedDistance ?? appDefaultMaxDistanceMeters ?? 40) : (appDefaultMaxDistanceMeters ?? 40)}
+          distanceCheckEnabled={(cameraForRow ? (cameraForRow.entityAllowedDistance ?? appDefaultMaxDistanceMeters) : appDefaultMaxDistanceMeters) != null}
           onDistanceExceeded={(dist) => {
             setDistanceExceededValue(dist);
             setShowDistanceExceededPopup(true);

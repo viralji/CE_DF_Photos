@@ -10,6 +10,20 @@ APP_PORT="${APP_PORT:-13001}"
 echo "=== Deploy in $APP_DIR (health check port: $APP_PORT) ==="
 [ -f package.json ] || { echo "Missing package.json"; exit 1; }
 [ -d .git ] || { echo "Not a git repo"; exit 1; }
+
+# Backup SQLite DB before any changes (live data safety)
+DB_PATH="${DATABASE_PATH:-$APP_DIR/data/ce_df_photos.db}"
+if [ -f "$DB_PATH" ]; then
+  BACKUP_DIR="${BACKUP_DIR:-$APP_DIR/data/backups}"
+  mkdir -p "$BACKUP_DIR"
+  STAMP=$(date +%Y%m%d_%H%M%S)
+  BACKUP_FILE="$BACKUP_DIR/ce_df_photos_${STAMP}.db"
+  cp -a "$DB_PATH" "$BACKUP_FILE"
+  echo "✓ DB backed up to $BACKUP_FILE"
+else
+  echo "○ No DB at $DB_PATH (new install?)"
+fi
+
 git pull
 npm ci
 npm run build || { echo "Build failed"; exit 1; }

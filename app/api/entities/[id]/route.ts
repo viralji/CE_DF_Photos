@@ -25,8 +25,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     const body = await request.json();
     const db = getDb();
-    const existing = db.prepare('SELECT id, name, code, display_order FROM entities WHERE id = ?').get(entityId) as
-      | { id: number; name: string; code: string; display_order: number }
+    const existing = db.prepare('SELECT id, name, code, display_order, allowed_distance FROM entities WHERE id = ?').get(entityId) as
+      | { id: number; name: string; code: string; display_order: number; allowed_distance: number | null }
       | undefined;
     if (!existing) {
       return NextResponse.json({ error: 'Entity not found' }, { status: 404 });
@@ -37,6 +37,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         ? normalizeCode(typeof body.code === 'string' ? body.code : String(body.code), name)
         : existing.code;
     const display_order = typeof body.display_order === 'number' ? body.display_order : undefined;
+    const allowed_distance =
+      body.allowed_distance !== undefined
+        ? body.allowed_distance === null || body.allowed_distance === ''
+          ? null
+          : (Number.isFinite(Number(body.allowed_distance)) && Number(body.allowed_distance) > 0 ? Math.floor(Number(body.allowed_distance)) : null)
+        : undefined;
 
     const nameConflict = db.prepare('SELECT id FROM entities WHERE (name = ? OR code = ?) AND id != ?').get(name, code, entityId) as
       | { id: number }
@@ -45,17 +51,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'Another entity already has this name or code' }, { status: 400 });
     }
 
+    const updates: string[] = ['name = ?', 'code = ?', 'updated_at = CURRENT_TIMESTAMP'];
+    const bindings: (string | number | null)[] = [name, code];
     if (display_order !== undefined) {
-      db.prepare('UPDATE entities SET name = ?, code = ?, display_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
-        name,
-        code,
-        display_order,
-        entityId
-      );
-    } else {
-      db.prepare('UPDATE entities SET name = ?, code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(name, code, entityId);
+      updates.push('display_order = ?');
+      bindings.push(display_order);
     }
-    const row = db.prepare('SELECT id, name, code, display_order FROM entities WHERE id = ?').get(entityId);
+    if (allowed_distance !== undefined) {
+      updates.push('allowed_distance = ?');
+      bindings.push(allowed_distance);
+    }
+    bindings.push(entityId);
+    db.prepare(`UPDATE entities SET ${updates.join(', ')} WHERE id = ?`).run(...bindings);
+    const row = db.prepare('SELECT id, name, code, display_order, allowed_distance FROM entities WHERE id = ?').get(entityId);
     return NextResponse.json({ entity: row });
   } catch (error: unknown) {
     logError('Entity PATCH', error);

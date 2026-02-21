@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const result = query(
-      `SELECT c.*, e.name AS entity, e.name AS entity_name, e.code AS entity_code
+      `SELECT c.*, e.name AS entity, e.name AS entity_name, e.code AS entity_code, e.allowed_distance AS entity_allowed_distance
        FROM checkpoints c
        LEFT JOIN entities e ON c.entity_id = e.id
        ORDER BY e.display_order ASC, e.name ASC, c.display_order ASC, c.checkpoint_name ASC`,

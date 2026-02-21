@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const result = query(
-      'SELECT id, name, code, display_order FROM entities ORDER BY display_order ASC, name ASC',
+      'SELECT id, name, code, display_order, allowed_distance FROM entities ORDER BY display_order ASC, name ASC',
       []
     );
     return NextResponse.json({ entities: result.rows });
@@ -47,12 +47,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Entity with this name or code already exists' }, { status: 400 });
     }
     const maxOrder = db.prepare('SELECT COALESCE(MAX(display_order), 0) + 1 AS next_order FROM entities').get() as { next_order: number };
-    db.prepare('INSERT INTO entities (name, code, display_order) VALUES (?, ?, ?)').run(name, code, maxOrder.next_order);
-    const row = db.prepare('SELECT id, name, code, display_order FROM entities WHERE name = ?').get(name) as {
+    const allowedDistance = body.allowed_distance != null ? (Number.isFinite(Number(body.allowed_distance)) && Number(body.allowed_distance) > 0 ? Math.floor(Number(body.allowed_distance)) : null) : null;
+    db.prepare('INSERT INTO entities (name, code, display_order, allowed_distance) VALUES (?, ?, ?, ?)').run(name, code, maxOrder.next_order, allowedDistance);
+    const row = db.prepare('SELECT id, name, code, display_order, allowed_distance FROM entities WHERE name = ?').get(name) as {
       id: number;
       name: string;
       code: string;
       display_order: number;
+      allowed_distance: number | null;
     };
     return NextResponse.json({ entity: row });
   } catch (error: unknown) {

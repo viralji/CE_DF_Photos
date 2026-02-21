@@ -16,7 +16,7 @@ Photo capture and review system for fiber optic installation quality control. Mo
 | **Review** | Approve / QC Required / NC with **comment thread**; QC Required and NC require a comment; capturer resubmits with comment. **Submitter and approver** shown on each photo (Review and View photo). **Aging**: days since submission for non-approved photos (badge on cards; summary shows oldest non-approved days per subsection). **Full resubmission history**: "View full history" timeline of all attempts. Mobile: compact icon-only buttons. Bulk actions with shared comment. |
 | **Map** | Route, subsection, and entity filters; photo locations on map. |
 | **Reports** | Route completion and related reports. |
-| **Admin** | User and role management; subsection access. **Settings**: "Enforce 40 m capture distance" (toggle); **Max GPS accuracy (m)** — block capture if accuracy worse than ±X m (e.g. 20); leave empty for no limit. |
+| **Admin** | User and role management; subsection access. **Settings**: "Enforce 40 m capture distance" (app default); **Max allowed distance (m)** — default when entity has no value. **Entities**: per-entity **Allowed dist (m)** overrides app default for that entity's checkpoints/photos. **Max GPS accuracy (m)** — block capture if worse than ±X m; leave empty for no limit. |
 | **Questions and Suggestions** | Dashboard: questions (AI via Google Gemini) or suggestions; stored in `user_feedback`. Requires `GEMINI_API_KEY` in `.env`. |
 | **Auth** | NextAuth with Azure AD; for local testing set cookie **dev-bypass-auth** = **true**. **Logout** clears capture session (next login = first photo allowed). |
 
@@ -51,7 +51,7 @@ npm run db:setup
 npm run db:seed-entities-checkpoints
 ```
 
-- **db:setup** — Creates schema from `scripts/create-schema.sql` (if new DB) and applies in-code migrations in `lib/db.ts`: `photo_submission_comments`, `subsection_allowed_emails`, `user_feedback`, `resubmission_of_id`, `app_settings`, **routes.length**, **subsections.length** (ERP sync), file fingerprint columns, etc. Idempotent.
+- **db:setup** — Creates schema from `scripts/create-schema.sql` (if new DB) and applies in-code migrations in `lib/db.ts`: `photo_submission_comments`, `subsection_allowed_emails`, `user_feedback`, `resubmission_of_id`, `app_settings`, **routes.length**, **subsections.length** (ERP sync), file fingerprint columns, **entities.allowed_distance**, etc. Idempotent.
 - **db:seed-entities-checkpoints** — Inserts entities and checkpoints from `checkpoints_data.json`. Idempotent.
 
 | Goal | Command(s) |
@@ -70,6 +70,7 @@ npm run db:seed-entities-checkpoints
 | **db:seed-entities-checkpoints** | Seed entities/checkpoints from checkpoints_data.json (run after editing that file). |
 | **deploy-and-verify-on-server.sh** | On server: git pull, npm ci, build, db:setup, seed, PM2 restart, health check. |
 | **deploy-from-local.sh** | From local: git push, then SSH to server and run deploy-and-verify-on-server.sh. Set `SERVER=root@host`. |
+| **migrate-entity-allowed-distance.mjs** | Optional: add `entities.allowed_distance` only (idempotent). db:setup already does this. |
 | **verify-server.sh** | Quick health check: `./scripts/verify-server.sh https://your-domain.com` |
 
 ---
@@ -101,7 +102,7 @@ npm run db:seed-entities-checkpoints
 
 **Verify:** `pm2 status` / `pm2 logs ce-df-photos`; `./scripts/verify-server.sh https://your-domain.com`; sign in and check Dashboard, Capture, Gallery, Review.
 
-**Deployment checklist:** The deploy script runs: git pull → npm ci → build → db:setup → db:seed-entities-checkpoints → PM2 restart → health check on APP_PORT (default 13001).
+**Deployment checklist:** The deploy script runs: **backup of SQLite DB** (to `data/backups/ce_df_photos_YYYYMMDD_HHMMSS.db`) → git pull → npm ci → build → db:setup → db:seed-entities-checkpoints → PM2 restart → health check on APP_PORT (default 13001). Existing data is preserved; migrations (e.g. `entities.allowed_distance`) are applied by db:setup and are idempotent.
 
 ---
 

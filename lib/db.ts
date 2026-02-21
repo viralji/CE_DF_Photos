@@ -5,9 +5,14 @@ import { logError } from './safe-log';
 
 let db: Database.Database | null = null;
 
+/** Resolved path to the SQLite database file (for backup, etc.). */
+export function getDatabasePath(): string {
+  return process.env.DATABASE_URL || process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'ce_df_photos.db');
+}
+
 export function getDb(): Database.Database {
   if (!db) {
-    const dbPath = process.env.DATABASE_URL || process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'ce_df_photos.db');
+    const dbPath = getDatabasePath();
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
@@ -236,6 +241,16 @@ export function getDb(): Database.Database {
       if (!hasCheckpointType) {
         db.exec("ALTER TABLE checkpoints ADD COLUMN checkpoint_type TEXT DEFAULT 'Multiple'");
         db.exec("UPDATE checkpoints SET checkpoint_type = CASE WHEN execution_stage IN ('Before','After') THEN 'Single' ELSE 'Multiple' END");
+      }
+    } catch {
+      // ignore
+    }
+    // entities.allowed_distance: max capture distance (m) per entity; NULL = use app default
+    try {
+      const entityCols = db.prepare("PRAGMA table_info(entities)").all() as { name: string }[];
+      const hasAllowedDistance = entityCols.some((c) => c.name === 'allowed_distance');
+      if (!hasAllowedDistance) {
+        db.exec('ALTER TABLE entities ADD COLUMN allowed_distance INTEGER');
       }
     } catch {
       // ignore
