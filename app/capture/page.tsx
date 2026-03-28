@@ -66,6 +66,7 @@ export default function CapturePage() {
     locationAccuracy?: number | null;
     createdAt?: string | null;
   } | null>(null);
+  const [aiScoreModal, setAiScoreModal] = useState<{ score: number; confidence: string | null; issues: string[]; summary: string | null } | null>(null);
   const [commentModalPhotoId, setCommentModalPhotoId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
@@ -114,6 +115,11 @@ export default function CapturePage() {
     longitude?: number | null;
     location_accuracy?: number | null;
     created_at?: string | null;
+    ai_score?: number | null;
+    ai_confidence?: string | null;
+    ai_issues?: string | null;
+    ai_summary?: string | null;
+    ai_status?: string | null;
   }[];
   const checkpoints = (checkpointsData?.checkpoints ?? []) as {
     id: number;
@@ -596,6 +602,28 @@ export default function CapturePage() {
                               {rowAgingLabel}
                             </span>
                           )}
+                          {(() => {
+                            if (!photo) return null;
+                            const aiStatus = photo.ai_status;
+                            const aiScore = photo.ai_score ?? null;
+                            if (aiStatus === 'pending' || aiStatus === 'scoring') {
+                              return <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">AI…</span>;
+                            }
+                            if (aiStatus === 'done' && aiScore != null) {
+                              const colorClass = aiScore >= 80 ? 'bg-green-100 text-green-800' : aiScore >= 60 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+                              const issues: string[] = (() => { try { return photo.ai_issues ? JSON.parse(photo.ai_issues) as string[] : []; } catch { return []; } })();
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setAiScoreModal({ score: aiScore, confidence: photo.ai_confidence ?? null, issues, summary: photo.ai_summary ?? null })}
+                                  className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ${colorClass} active:opacity-70`}
+                                >
+                                  AI {aiScore}/100
+                                </button>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {hasPhoto && (
@@ -701,6 +729,54 @@ export default function CapturePage() {
             setShowAccuracyExceededPopup(true);
           }}
         />
+      )}
+
+      {/* AI Score Detail Modal */}
+      {aiScoreModal && (
+        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={() => setAiScoreModal(null)}>
+          <div className="bg-white w-full sm:max-w-sm sm:rounded-xl rounded-t-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 pt-4 pb-3 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className={`text-lg font-bold ${aiScoreModal.score >= 80 ? 'text-green-700' : aiScoreModal.score >= 60 ? 'text-yellow-700' : 'text-red-700'}`}>
+                  AI Score: {aiScoreModal.score}/100
+                </span>
+                {aiScoreModal.confidence === 'low' && <span className="text-xs text-slate-500">(uncertain)</span>}
+              </div>
+              <button type="button" onClick={() => setAiScoreModal(null)} className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="px-4 py-4 space-y-3 max-h-[60vh] overflow-y-auto">
+              {aiScoreModal.summary && (
+                <p className="text-sm text-slate-700 italic">{aiScoreModal.summary}</p>
+              )}
+              {aiScoreModal.issues.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Issues found</p>
+                  <ul className="space-y-2">
+                    {aiScoreModal.issues.map((issue, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-red-700">
+                        <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span>{issue}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {aiScoreModal.issues.length === 0 && (
+                <p className="text-sm text-green-700 flex items-center gap-2">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  No issues detected
+                </p>
+              )}
+            </div>
+            <div className="px-4 pb-4">
+              <button type="button" onClick={() => setAiScoreModal(null)} className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl text-sm">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Photo View Modal */}

@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   logging: {
     incomingRequests: false,
   },
+  devIndicators: false,
   experimental: {
     serverActions: { bodySizeLimit: '10mb' },
     optimizePackageImports: ['leaflet'],

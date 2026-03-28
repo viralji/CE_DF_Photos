@@ -263,6 +263,60 @@ export function getDb(): Database.Database {
     } catch {
       // ignore
     }
+    // photo_ai_scores: AI scoring results per photo
+    try {
+      const hasAiScores = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_ai_scores'").get();
+      if (!hasAiScores) {
+        db.exec(`
+          CREATE TABLE photo_ai_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            photo_submission_id INTEGER NOT NULL UNIQUE,
+            score INTEGER,
+            confidence TEXT,
+            issues TEXT,
+            positives TEXT,
+            summary TEXT,
+            model_used TEXT,
+            prompt_version INTEGER DEFAULT 1,
+            status TEXT DEFAULT 'pending',
+            error TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (photo_submission_id) REFERENCES photo_submissions(id) ON DELETE CASCADE
+          )
+        `);
+        db.exec('CREATE INDEX IF NOT EXISTS idx_photo_ai_scores_photo ON photo_ai_scores(photo_submission_id)');
+      }
+    } catch {
+      // ignore
+    }
+    // ai_prompt_versions: versioned base prompts for AI scoring, editable by admin
+    try {
+      const hasAiPromptVersions = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ai_prompt_versions'").get();
+      if (!hasAiPromptVersions) {
+        db.exec(`
+          CREATE TABLE ai_prompt_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version INTEGER NOT NULL,
+            system_context TEXT NOT NULL,
+            scoring_guide TEXT NOT NULL,
+            is_active INTEGER DEFAULT 0,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT
+          )
+        `);
+        // Seed initial version from hardcoded defaults
+        db.prepare(`
+          INSERT INTO ai_prompt_versions (version, system_context, scoring_guide, is_active, notes, created_by)
+          VALUES (1, ?, ?, 1, 'Initial version (migrated from hardcoded prompt)', 'system')
+        `).run(
+          'You are a QC inspector for fiber optic cable installation projects in India. You are evaluating construction site photos for compliance with project specifications.',
+          'Scoring guide:\n- 90-100: Excellent, clearly meets all requirements\n- 70-89: Good, only minor issues\n- 50-69: Acceptable but notable issues\n- 30-49: Poor, significant issues\n- 0-29: Does not meet requirements\n\nConfidence reflects image clarity: "high" if content is clearly visible, "medium" if somewhat unclear, "low" if very unclear or image quality prevents proper assessment.'
+        );
+      }
+    } catch {
+      // ignore
+    }
   }
   setImmediate(() => {
     import('./erp-sync-scheduler').then((m) => m.startErpSyncScheduler()).catch(() => {});

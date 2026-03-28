@@ -188,3 +188,33 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT NOT NULL
 );
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('capture_distance_check_enabled', '1');
+
+CREATE TABLE IF NOT EXISTS photo_ai_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  photo_submission_id INTEGER NOT NULL UNIQUE,
+  score INTEGER,
+  confidence TEXT,
+  issues TEXT,
+  positives TEXT,
+  summary TEXT,
+  model_used TEXT,
+  prompt_version INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'pending',
+  error TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (photo_submission_id) REFERENCES photo_submissions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_photo_ai_scores_photo ON photo_ai_scores(photo_submission_id);
+
+-- AI prompt versions: versioned base prompts editable by admin
+CREATE TABLE IF NOT EXISTS ai_prompt_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  version INTEGER NOT NULL,
+  system_context TEXT NOT NULL,
+  scoring_guide TEXT NOT NULL,
+  is_active INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT
+);
+

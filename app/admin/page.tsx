@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -99,6 +99,12 @@ export default function AdminPage() {
     display_order: number;
     execution_stage?: string | null;
     checkpoint_type?: string | null;
+    description?: string | null;
+    specs?: string | null;
+    photo_spec_1?: string | null;
+    photo_spec_2?: string | null;
+    photo_spec_3?: string | null;
+    photo_spec_4?: string | null;
   }[];
   const entities = (entitiesData?.entities ?? []) as { id: number; name: string; code: string; display_order: number; allowed_distance?: number | null }[];
   const subsectionEmailsList = (subsectionEmailsData?.emails ?? []) as { id: number; route_id: string; subsection_id: string; email: string }[];
@@ -114,6 +120,14 @@ export default function AdminPage() {
   const [editingCheckpointCode, setEditingCheckpointCode] = useState('');
   const [editingCheckpointOrder, setEditingCheckpointOrder] = useState(0);
   const [editingCheckpointType, setEditingCheckpointType] = useState<string>('Multiple');
+  const [specsExpandedId, setSpecsExpandedId] = useState<number | null>(null);
+  const [editingDescription, setEditingDescription] = useState('');
+  const [editingSpecs, setEditingSpecs] = useState('');
+  const [editingPhotoSpec1, setEditingPhotoSpec1] = useState('');
+  const [editingPhotoSpec2, setEditingPhotoSpec2] = useState('');
+  const [editingPhotoSpec3, setEditingPhotoSpec3] = useState('');
+  const [editingPhotoSpec4, setEditingPhotoSpec4] = useState('');
+  const [specsSaving, setSpecsSaving] = useState(false);
   const [subsectionEmailsByKey, setSubsectionEmailsByKey] = useState<Record<string, string[]>>({});
   const [emailFilterRouteId, setEmailFilterRouteId] = useState('');
   const [emailFilterSubsectionKey, setEmailFilterSubsectionKey] = useState('');
@@ -416,6 +430,33 @@ export default function AdminPage() {
     }
     setMessage('✓ Checkpoint deleted.');
     scheduleMessageClear();
+    queryClient.invalidateQueries({ queryKey: ['checkpoints'] });
+  }
+
+  async function saveCheckpointSpecs(id: number) {
+    setSpecsSaving(true);
+    const res = await fetch(`/api/checkpoints/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: editingDescription,
+        specs: editingSpecs,
+        photo_spec_1: editingPhotoSpec1,
+        photo_spec_2: editingPhotoSpec2,
+        photo_spec_3: editingPhotoSpec3,
+        photo_spec_4: editingPhotoSpec4,
+      }),
+    });
+    const data = await res.json();
+    setSpecsSaving(false);
+    if (!res.ok) {
+      setMessage(`❌ ${data.error || 'Failed to save specs'}`);
+      scheduleMessageClear();
+      return;
+    }
+    setMessage('✓ Checkpoint specs saved.');
+    scheduleMessageClear();
+    setSpecsExpandedId(null);
     queryClient.invalidateQueries({ queryKey: ['checkpoints'] });
   }
 
@@ -823,8 +864,11 @@ export default function AdminPage() {
                       const idxInEntity = sameEntity.findIndex((x) => x.id === c.id);
                       const canMoveUp = idxInEntity > 0;
                       const canMoveDown = idxInEntity < sameEntity.length - 1;
+                      const hasSpecs = !!(c.description || c.specs || c.photo_spec_1 || c.photo_spec_2 || c.photo_spec_3 || c.photo_spec_4);
+                      const specsOpen = specsExpandedId === c.id && editingCheckpointId !== c.id;
                       return (
-                      <tr key={c.id} className="hover:bg-slate-50">
+                      <Fragment key={c.id}>
+                      <tr className={specsOpen ? 'bg-purple-50' : 'hover:bg-slate-50'}>
                         <td className="p-1.5">
                           <div className="flex items-center gap-1">
                             <span className="text-slate-500 font-mono text-xs w-4 tabular-nums">{idx + 1}</span>
@@ -877,10 +921,62 @@ export default function AdminPage() {
                             <td className="p-2">
                               <button type="button" onClick={() => { setEditingCheckpointId(c.id); setEditingCheckpointEntityId(c.entity_id); setEditingCheckpointName(c.checkpoint_name); setEditingCheckpointCode(c.code ?? ''); setEditingCheckpointOrder(c.display_order); setEditingCheckpointType((c.checkpoint_type === 'Single' || c.checkpoint_type === 'Multiple') ? c.checkpoint_type : (c.execution_stage === 'Before' || c.execution_stage === 'After') ? 'Single' : 'Multiple'); }} className="text-blue-600 hover:text-blue-800 text-xs mr-2">Edit</button>
                               <button type="button" onClick={() => deleteCheckpoint(c.id)} className="text-red-600 hover:text-red-800 text-xs mr-2">Delete</button>
+                              <button type="button" onClick={() => {
+                                if (specsExpandedId === c.id) { setSpecsExpandedId(null); return; }
+                                setSpecsExpandedId(c.id);
+                                setEditingDescription(c.description ?? '');
+                                setEditingSpecs(c.specs ?? '');
+                                setEditingPhotoSpec1(c.photo_spec_1 ?? '');
+                                setEditingPhotoSpec2(c.photo_spec_2 ?? '');
+                                setEditingPhotoSpec3(c.photo_spec_3 ?? '');
+                                setEditingPhotoSpec4(c.photo_spec_4 ?? '');
+                              }} className={`text-xs mr-2 ${hasSpecs ? 'text-purple-600 hover:text-purple-800 font-medium' : 'text-slate-400 hover:text-slate-600'}`}>
+                                {hasSpecs ? 'Specs ✓' : 'Specs'}
+                              </button>
                             </td>
                           </>
                         )}
                       </tr>
+                      {specsOpen && (
+                        <tr>
+                          <td colSpan={6} className="bg-purple-50 border-b border-purple-100 px-4 pb-4">
+                            <div className="pt-3 max-w-2xl space-y-3">
+                              <p className="text-xs font-semibold text-purple-700 mb-2">Specifications for: {c.checkpoint_name}</p>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+                                <textarea value={editingDescription} onChange={(e) => setEditingDescription(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded resize-none" placeholder="What does this checkpoint verify?" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Specifications</label>
+                                <textarea value={editingSpecs} onChange={(e) => setEditingSpecs(e.target.value)} rows={3} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded resize-none" placeholder="Detailed requirements, standards, measurements..." />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-slate-600 mb-1">Photo requirement 1</label>
+                                  <input type="text" value={editingPhotoSpec1} onChange={(e) => setEditingPhotoSpec1(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded" placeholder="e.g. Wide shot showing full trench" />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-slate-600 mb-1">Photo requirement 2</label>
+                                  <input type="text" value={editingPhotoSpec2} onChange={(e) => setEditingPhotoSpec2(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded" placeholder="e.g. Close-up of depth measurement" />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-slate-600 mb-1">Photo requirement 3</label>
+                                  <input type="text" value={editingPhotoSpec3} onChange={(e) => setEditingPhotoSpec3(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded" placeholder="Optional" />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-slate-600 mb-1">Photo requirement 4</label>
+                                  <input type="text" value={editingPhotoSpec4} onChange={(e) => setEditingPhotoSpec4(e.target.value)} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded" placeholder="Optional" />
+                                </div>
+                              </div>
+                              <div className="flex gap-2 pt-1">
+                                <button type="button" onClick={() => saveCheckpointSpecs(c.id)} disabled={specsSaving} className="px-3 py-1.5 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 disabled:opacity-50">{specsSaving ? 'Saving…' : 'Save Specs'}</button>
+                                <button type="button" onClick={() => setSpecsExpandedId(null)} className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 border border-slate-300 rounded">Cancel</button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                       );
                     })}
                   </tbody>
@@ -1108,6 +1204,14 @@ export default function AdminPage() {
         )}
 
         {activeTab === 4 && (
+        <div className="space-y-4">
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <h2 className="font-semibold text-slate-900 text-sm mb-2">AI Scoring Config</h2>
+          <p className="text-xs text-slate-500 mb-3">Manage the base prompt, per-checkpoint instructions, and preview compiled prompts sent to Gemini.</p>
+          <Link href="/admin/ai-config" className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+            Open AI Config →
+          </Link>
+        </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h2 className="font-semibold text-slate-900 text-sm mb-2">ERP sync schedule</h2>
           <p className="text-xs text-slate-500 mb-2">Run sync with ERPNext automatically at the chosen interval (in minutes). 0 = off. When on, the last run time and result are shown below so you can verify it is running.</p>
@@ -1368,6 +1472,7 @@ export default function AdminPage() {
               </button>
             </div>
           </div>
+        </div>
         </div>
         )}
       </main>

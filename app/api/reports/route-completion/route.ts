@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionOrDevBypass } from '@/lib/auth-helpers';
+import { getSessionWithRole } from '@/lib/auth-helpers';
 import { query } from '@/lib/db';
 import { logError } from '@/lib/safe-log';
 
@@ -10,9 +10,12 @@ import { logError } from '@/lib/safe-log';
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSessionOrDevBypass(request);
+    const session = await getSessionWithRole(request);
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role === 'Engineer') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const checkpointCount =

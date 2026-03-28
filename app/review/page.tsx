@@ -31,6 +31,12 @@ type PhotoRow = {
   reviewer_name?: string | null;
   reviewed_at?: string | null;
   created_at?: string | null;
+  ai_score?: number | null;
+  ai_confidence?: string | null;
+  ai_issues?: string | null;
+  ai_positives?: string | null;
+  ai_summary?: string | null;
+  ai_status?: string | null;
 };
 
 type CommentRow = { id: number; author_email: string; author_name: string | null; created_at: string; comment_text: string };
@@ -96,6 +102,65 @@ function ReviewPhotoCard({
   const approverLabel = photo.reviewer_name || photo.reviewer_email || null;
   const reviewedAt = photo.reviewed_at ? new Date(photo.reviewed_at).toLocaleString() : null;
 
+  const aiScore = photo.ai_score ?? null;
+  const aiStatus = photo.ai_status ?? null;
+  const aiIssues: string[] = (() => {
+    try { return photo.ai_issues ? (JSON.parse(photo.ai_issues) as string[]) : []; } catch { return []; }
+  })();
+  const aiSummary = photo.ai_summary ?? null;
+
+  const [showAiDetails, setShowAiDetails] = useState(false);
+
+  const aiScoreBadge = (() => {
+    if (!aiStatus || aiStatus === 'error') return null;
+    if (aiStatus === 'pending' || aiStatus === 'scoring') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-500">
+          <span className="w-2.5 h-2.5 border border-slate-400 border-t-slate-600 rounded-full animate-spin" />
+          AI analyzing…
+        </span>
+      );
+    }
+    if (aiStatus === 'done' && aiScore != null) {
+      const colorClass =
+        aiScore >= 80 ? 'bg-green-100 text-green-800' :
+        aiScore >= 60 ? 'bg-yellow-100 text-yellow-800' :
+        'bg-red-100 text-red-800';
+      return (
+        <button
+          type="button"
+          onClick={() => setShowAiDetails((v) => !v)}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${colorClass} hover:opacity-80`}
+          title={aiSummary ?? undefined}
+        >
+          AI {aiScore}/100
+          {aiIssues.length > 0 && <span>· {aiIssues.length} issue{aiIssues.length !== 1 ? 's' : ''}</span>}
+          {photo.ai_confidence === 'low' && <span className="opacity-60">· uncertain</span>}
+          <svg className={`w-3 h-3 transition-transform ${showAiDetails ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      );
+    }
+    return null;
+  })();
+
+  const aiDetailsPanel = showAiDetails && aiStatus === 'done' && aiScore != null ? (
+    <div className="mt-1 p-2 bg-slate-50 border border-slate-200 rounded text-xs space-y-1">
+      {aiSummary && <p className="text-slate-700 italic">{aiSummary}</p>}
+      {aiIssues.length > 0 && (
+        <ul className="space-y-0.5">
+          {aiIssues.map((issue, i) => (
+            <li key={i} className="flex items-start gap-1 text-red-700">
+              <span className="mt-0.5 flex-shrink-0">•</span>
+              <span>{issue}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  ) : null;
+
   const showAging = photo.status !== 'approved' && photo.created_at;
   const agingDays = showAging ? getAgingDays(photo.created_at) : 0;
   const agingLabel = showAging ? formatAging(agingDays) : '';
@@ -116,6 +181,7 @@ function ReviewPhotoCard({
             <span className={submitterLabel != null ? ' block mt-0.5' : ''}>Approved by: {approverLabel}{reviewedAt != null ? ` (${reviewedAt})` : ''}</span>
           )}
         </div>
+        {aiScoreBadge && <div>{aiScoreBadge}{aiDetailsPanel}</div>}
         <div className="flex flex-wrap gap-1.5 md:gap-2">
         <Link
           href={`/view-photo/${photo.id}`}
@@ -269,6 +335,7 @@ function ReviewPhotoCard({
               )}
             </div>
           )}
+          {aiScoreBadge && <div className="mb-2">{aiScoreBadge}{aiDetailsPanel}</div>}
           <div className="flex-1 flex flex-col min-h-0">
             <div className="aspect-[4/3] rounded-md overflow-hidden bg-slate-100 flex-shrink-0">
               <img

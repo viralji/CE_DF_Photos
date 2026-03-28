@@ -14,6 +14,7 @@ import { compressImage, getImageMetadata, burnGeoOverlay } from '@/lib/image-com
 import { reverseGeocode, formatLocationForBurn } from '@/lib/geocode';
 import { logError } from '@/lib/safe-log';
 import { to3CharCode, uniqueCheckpointCodes, uniqueEntityCodes } from '@/lib/photo-filename';
+import { scorePhoto } from '@/lib/ai-scoring';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -247,6 +248,16 @@ export async function POST(request: NextRequest) {
       locationAccuracy ? parseFloat(locationAccuracy) : null
     );
     const inserted = db.prepare('SELECT * FROM photo_submissions ORDER BY id DESC LIMIT 1').get() as { id: number };
+    // Insert pending AI score row immediately so polling can start right away
+    try {
+      db.prepare('INSERT OR IGNORE INTO photo_ai_scores (photo_submission_id, status) VALUES (?, ?)').run(inserted.id, 'pending');
+    } catch {
+      // ignore — scoring is non-critical
+    }
+    // Fire-and-forget: score runs in background, does not block response
+    scorePhoto(inserted.id).catch((err) =>
+      console.error('[AI scoring] failed for photo', inserted.id, err)
+    );
     return NextResponse.json({ id: inserted.id, filename, s3_url: s3Url });
   } catch (error: unknown) {
     logError('Upload', error);

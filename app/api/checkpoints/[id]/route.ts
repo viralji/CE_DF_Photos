@@ -25,8 +25,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     const body = await request.json();
     const db = getDb();
-    const existing = db.prepare('SELECT id, entity_id, checkpoint_name, code, display_order, execution_stage, checkpoint_type FROM checkpoints WHERE id = ?').get(checkpointId) as
-      | { id: number; entity_id: number; checkpoint_name: string; code: string | null; display_order: number; execution_stage: string | null; checkpoint_type: string | null }
+    const existing = db.prepare('SELECT id, entity_id, checkpoint_name, code, display_order, execution_stage, checkpoint_type, description, specs, photo_spec_1, photo_spec_2, photo_spec_3, photo_spec_4 FROM checkpoints WHERE id = ?').get(checkpointId) as
+      | { id: number; entity_id: number; checkpoint_name: string; code: string | null; display_order: number; execution_stage: string | null; checkpoint_type: string | null; description: string | null; specs: string | null; photo_spec_1: string | null; photo_spec_2: string | null; photo_spec_3: string | null; photo_spec_4: string | null }
       | undefined;
     if (!existing) {
       return NextResponse.json({ error: 'Checkpoint not found' }, { status: 404 });
@@ -36,6 +36,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const checkpoint_name = typeof body.checkpoint_name === 'string' ? body.checkpoint_name.trim() : existing.checkpoint_name;
     const code = body.code !== undefined ? normalizeCheckpointCode(typeof body.code === 'string' ? body.code : String(body.code), checkpoint_name) : (existing.code ?? to3CharCode(existing.checkpoint_name));
     const display_order = typeof body.display_order === 'number' ? body.display_order : undefined;
+    // Spec fields: undefined = keep existing, empty string = clear to null
+    const description = body.description !== undefined ? (typeof body.description === 'string' ? body.description.trim() || null : null) : existing.description;
+    const specs = body.specs !== undefined ? (typeof body.specs === 'string' ? body.specs.trim() || null : null) : existing.specs;
+    const photo_spec_1 = body.photo_spec_1 !== undefined ? (typeof body.photo_spec_1 === 'string' ? body.photo_spec_1.trim() || null : null) : existing.photo_spec_1;
+    const photo_spec_2 = body.photo_spec_2 !== undefined ? (typeof body.photo_spec_2 === 'string' ? body.photo_spec_2.trim() || null : null) : existing.photo_spec_2;
+    const photo_spec_3 = body.photo_spec_3 !== undefined ? (typeof body.photo_spec_3 === 'string' ? body.photo_spec_3.trim() || null : null) : existing.photo_spec_3;
+    const photo_spec_4 = body.photo_spec_4 !== undefined ? (typeof body.photo_spec_4 === 'string' ? body.photo_spec_4.trim() || null : null) : existing.photo_spec_4;
+
     const rawType = typeof body.checkpoint_type === 'string' ? body.checkpoint_type.trim() : '';
     const checkpoint_type = rawType === 'Single' || rawType === 'Multiple' ? rawType : (existing.checkpoint_type === 'Single' || existing.checkpoint_type === 'Multiple' ? existing.checkpoint_type : 'Multiple');
     const execution_stage = checkpoint_type === 'Single' ? 'Before' : 'Ongoing';
@@ -63,28 +71,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'Code already in use for this entity' }, { status: 400 });
     }
 
-    const runUpdate = (sql: string, ...args: (string | number)[]) => db.prepare(sql).run(...args);
+    const runUpdate = (sql: string, ...args: (string | number | null)[]) => db.prepare(sql).run(...args);
     try {
       if (display_order !== undefined) {
         runUpdate(
-          'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, display_order = ?, execution_stage = ?, checkpoint_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          entity_id,
-          checkpoint_name,
-          code,
-          display_order,
-          execution_stage,
-          checkpoint_type,
-          checkpointId
+          'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, display_order = ?, execution_stage = ?, checkpoint_type = ?, description = ?, specs = ?, photo_spec_1 = ?, photo_spec_2 = ?, photo_spec_3 = ?, photo_spec_4 = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          entity_id, checkpoint_name, code, display_order, execution_stage, checkpoint_type,
+          description, specs, photo_spec_1, photo_spec_2, photo_spec_3, photo_spec_4, checkpointId
         );
       } else {
         runUpdate(
-          'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, execution_stage = ?, checkpoint_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          entity_id,
-          checkpoint_name,
-          code,
-          execution_stage,
-          checkpoint_type,
-          checkpointId
+          'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, execution_stage = ?, checkpoint_type = ?, description = ?, specs = ?, photo_spec_1 = ?, photo_spec_2 = ?, photo_spec_3 = ?, photo_spec_4 = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          entity_id, checkpoint_name, code, execution_stage, checkpoint_type,
+          description, specs, photo_spec_1, photo_spec_2, photo_spec_3, photo_spec_4, checkpointId
         );
       }
     } catch (e) {
@@ -92,10 +91,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if (msg.includes('no such column')) {
         runUpdate(
           'UPDATE checkpoints SET entity_id = ?, checkpoint_name = ?, code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          entity_id,
-          checkpoint_name,
-          code,
-          checkpointId
+          entity_id, checkpoint_name, code, checkpointId
         );
         if (display_order !== undefined) {
           runUpdate('UPDATE checkpoints SET display_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', display_order, checkpointId);
