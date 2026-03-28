@@ -662,7 +662,7 @@ function ReviewPageContent() {
     queryFn: async () =>
       (
         await fetch(
-          `/api/photos?routeId=${routeId}&subsectionId=${subsectionId}&status=${reviewStatusFilter}&limit=500`
+          `/api/photos?routeId=${encodeURIComponent(routeId)}&subsectionId=${encodeURIComponent(subsectionId)}&status=${reviewStatusFilter}&limit=500`
         )
       ).json(),
     enabled: routeId != null && subsectionId != null,
