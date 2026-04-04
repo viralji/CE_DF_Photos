@@ -53,6 +53,42 @@ export async function GET(
   }
 }
 
+// Any reviewer: save human score + notes for training data
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getSessionWithRole(request);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const { id } = await params;
+    const photoId = parseInt(id, 10);
+    if (!photoId || Number.isNaN(photoId)) {
+      return NextResponse.json({ error: 'Invalid photo ID' }, { status: 400 });
+    }
+    const body = await request.json() as { human_score?: number | null; human_notes?: string | null };
+    const { human_score, human_notes } = body;
+    if (human_score !== undefined && human_score !== null) {
+      if (typeof human_score !== 'number' || !Number.isInteger(human_score) || human_score < 0 || human_score > 100) {
+        return NextResponse.json({ error: 'Score must be an integer 0–100' }, { status: 400 });
+      }
+    }
+    const db = getDb();
+    db.prepare('INSERT OR IGNORE INTO photo_ai_scores (photo_submission_id, status) VALUES (?, ?)').run(photoId, 'pending');
+    db.prepare('UPDATE photo_ai_scores SET human_score = ?, human_notes = ? WHERE photo_submission_id = ?').run(
+      human_score ?? null,
+      typeof human_notes === 'string' ? human_notes.trim() || null : null,
+      photoId
+    );
+    return NextResponse.json({ ok: true });
+  } catch (error: unknown) {
+    logError('Score PATCH', error);
+    return NextResponse.json({ error: 'Failed to save human score' }, { status: 500 });
+  }
+}
+
 // Admin-only: re-trigger scoring for a photo
 export async function POST(
   request: NextRequest,

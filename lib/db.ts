@@ -289,6 +289,19 @@ export function getDb(): Database.Database {
     } catch {
       // ignore
     }
+    // photo_ai_scores: add human_score + human_notes columns for training data collection
+    try {
+      const aiScoreCols = db.prepare("PRAGMA table_info(photo_ai_scores)").all() as { name: string }[];
+      const aiScoreColNames = new Set(aiScoreCols.map((c) => c.name));
+      if (!aiScoreColNames.has('human_score')) {
+        db.exec('ALTER TABLE photo_ai_scores ADD COLUMN human_score INTEGER');
+      }
+      if (!aiScoreColNames.has('human_notes')) {
+        db.exec('ALTER TABLE photo_ai_scores ADD COLUMN human_notes TEXT');
+      }
+    } catch {
+      // ignore
+    }
     // ai_prompt_versions: versioned base prompts for AI scoring, editable by admin
     try {
       const hasAiPromptVersions = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ai_prompt_versions'").get();

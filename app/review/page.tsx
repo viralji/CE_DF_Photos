@@ -37,6 +37,8 @@ type PhotoRow = {
   ai_positives?: string | null;
   ai_summary?: string | null;
   ai_status?: string | null;
+  ai_human_score?: number | null;
+  ai_human_notes?: string | null;
 };
 
 type CommentRow = { id: number; author_email: string; author_name: string | null; created_at: string; comment_text: string };
@@ -110,6 +112,11 @@ function ReviewPhotoCard({
   const aiSummary = photo.ai_summary ?? null;
 
   const [showAiDetails, setShowAiDetails] = useState(false);
+  const [showHumanScore, setShowHumanScore] = useState(false);
+  const [humanScoreInput, setHumanScoreInput] = useState(photo.ai_human_score != null ? String(photo.ai_human_score) : '');
+  const [humanNotesInput, setHumanNotesInput] = useState(photo.ai_human_notes ?? '');
+  const [humanScoreSaving, setHumanScoreSaving] = useState(false);
+  const [humanScoreSaved, setHumanScoreSaved] = useState(false);
 
   const aiScoreBadge = (() => {
     if (!aiStatus || aiStatus === 'error') return null;
@@ -161,6 +168,55 @@ function ReviewPhotoCard({
     </div>
   ) : null;
 
+  async function saveHumanScore() {
+    const score = humanScoreInput === '' ? null : parseInt(humanScoreInput, 10);
+    if (humanScoreInput !== '' && (Number.isNaN(score!) || score! < 0 || score! > 100)) return;
+    setHumanScoreSaving(true);
+    try {
+      await fetch(`/api/photos/${photo.id}/score`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ human_score: score, human_notes: humanNotesInput || null }),
+      });
+      setHumanScoreSaved(true);
+      setTimeout(() => setHumanScoreSaved(false), 2000);
+    } finally {
+      setHumanScoreSaving(false);
+    }
+  }
+
+  const humanScorePanel = showHumanScore ? (
+    <div className="mt-1 p-2 bg-blue-50 border border-blue-200 rounded text-xs space-y-1.5">
+      <div className="flex items-center gap-2">
+        <label className="text-slate-600 flex-shrink-0">Your score (0–100):</label>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={humanScoreInput}
+          onChange={(e) => setHumanScoreInput(e.target.value)}
+          placeholder="e.g. 75"
+          className="w-20 px-1.5 py-0.5 border border-slate-300 rounded text-xs"
+        />
+      </div>
+      <textarea
+        value={humanNotesInput}
+        onChange={(e) => setHumanNotesInput(e.target.value)}
+        placeholder="Notes (optional) — what's good or bad about this photo"
+        rows={2}
+        className="w-full px-1.5 py-0.5 border border-slate-300 rounded text-xs resize-none"
+      />
+      <button
+        type="button"
+        onClick={saveHumanScore}
+        disabled={humanScoreSaving}
+        className="px-2 py-0.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
+      >
+        {humanScoreSaving ? 'Saving…' : humanScoreSaved ? 'Saved!' : 'Save'}
+      </button>
+    </div>
+  ) : null;
+
   const showAging = photo.status !== 'approved' && photo.created_at;
   const agingDays = showAging ? getAgingDays(photo.created_at) : 0;
   const agingLabel = showAging ? formatAging(agingDays) : '';
@@ -181,7 +237,23 @@ function ReviewPhotoCard({
             <span className={submitterLabel != null ? ' block mt-0.5' : ''}>Approved by: {approverLabel}{reviewedAt != null ? ` (${reviewedAt})` : ''}</span>
           )}
         </div>
-        {aiScoreBadge && <div>{aiScoreBadge}{aiDetailsPanel}</div>}
+        {aiScoreBadge && (
+          <div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {aiScoreBadge}
+              <button
+                type="button"
+                onClick={() => setShowHumanScore((v) => !v)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                title="Record your own score for training data"
+              >
+                {photo.ai_human_score != null ? `You: ${photo.ai_human_score}/100` : 'Rate'}
+              </button>
+            </div>
+            {aiDetailsPanel}
+            {humanScorePanel}
+          </div>
+        )}
         <div className="flex flex-wrap gap-1.5 md:gap-2">
         <Link
           href={`/view-photo/${photo.id}`}
