@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
     const latestPerSlot = searchParams.get('latestPerSlot') !== 'false';
     const rawLimit = parseInt(searchParams.get('limit') || '50', 10);
     const rawOffset = parseInt(searchParams.get('offset') || '0', 10);
-    const limit = Math.min(Math.max(1, Number.isNaN(rawLimit) ? 50 : rawLimit), 500);
+    const parsedLimit = Number.isNaN(rawLimit) ? 50 : rawLimit;
+    const limit = Math.min(Math.max(1, parsedLimit), Number.MAX_SAFE_INTEGER);
     const offset = Math.max(0, Number.isNaN(rawOffset) ? 0 : rawOffset);
 
     const whereClauses: string[] = [];

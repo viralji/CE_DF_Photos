@@ -73,11 +73,26 @@ async function fetchRoutes() {
   return res.json();
 }
 
+const PHOTOS_PAGE_SIZE = 10000;
+
 async function fetchPhotos(routeId: string | null) {
-  const p = new URLSearchParams(routeId ? { routeId, limit: '2000' } : { limit: '2000' });
-  const res = await fetch(`/api/photos?${p}`);
-  if (!res.ok) throw new Error('Failed');
-  return res.json();
+  const photos: Record<string, unknown>[] = [];
+  let offset = 0;
+  while (true) {
+    const p = new URLSearchParams({
+      limit: String(PHOTOS_PAGE_SIZE),
+      offset: String(offset),
+    });
+    if (routeId) p.set('routeId', routeId);
+    const res = await fetch(`/api/photos?${p}`);
+    if (!res.ok) throw new Error('Failed');
+    const data = (await res.json()) as { photos?: Record<string, unknown>[] };
+    const batch = data.photos ?? [];
+    photos.push(...batch);
+    if (batch.length < PHOTOS_PAGE_SIZE) break;
+    offset += PHOTOS_PAGE_SIZE;
+  }
+  return { photos };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
