@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Photo Scoring — Strategy & Roadmap | CE DF Photos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --primary-50:  #eff6ff;
+    --primary-100: #dbeafe;
+    --primary-200: #bfdbfe;
+    --primary-500: #3b82f6;
+    --primary-600: #2563eb;
+    --primary-700: #1d4ed8;
+    --primary-800: #1e40af;
+    --primary-900: #1e3a8a;
+    --slate-50:  #f8fafc;
+    --slate-100: #f1f5f9;
+    --slate-200: #e2e8f0;
+    --slate-300: #cbd5e1;
+    --slate-400: #94a3b8;
+    --slate-500: #64748b;
+    --slate-600: #475569;
+    --slate-700: #334155;
+    --slate-800: #1e293b;
+    --slate-900: #0f172a;
+    --amber-50:  #fffbeb;
+    --amber-100: #fef3c7;
+    --amber-400: #fbbf24;
+    --amber-500: #f59e0b;
+    --amber-600: #d97706;
+    --green-50:  #f0fdf4;
+    --green-100: #dcfce7;
+    --green-500: #22c55e;
+    --green-600: #16a34a;
+    --green-700: #15803d;
+    --red-50:   #fef2f2;
+    --red-100:  #fee2e2;
+    --red-500:  #ef4444;
+    --red-600:  #dc2626;
+    --purple-50:  #faf5ff;
+    --purple-100: #f3e8ff;
+    --purple-600: #9333ea;
+    --purple-700: #7e22ce;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--slate-50);
+    color: var(--slate-700);
+    line-height: 1.6;
+    display: flex;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 240px;
+    min-width: 240px;
+    background: white;
+    border-right: 1px solid var(--slate-200);
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-brand {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--slate-100);
+  }
+  .sidebar-brand .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .sidebar-brand .logo-icon {
+    width: 28px; height: 28px;
+    background: var(--primary-600);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sidebar-brand .logo-icon svg { width: 16px; height: 16px; fill: white; }
+  .sidebar-brand .logo-text { font-weight: 700; font-size: 13px; color: var(--slate-800); }
+  .sidebar-brand .subtitle { font-size: 11px; color: var(--slate-400); font-weight: 500; letter-spacing: 0.03em; text-transform: uppercase; }
+
+  nav { padding: 12px 12px; flex: 1; }
+  nav .nav-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--slate-400);
+    padding: 8px 8px 4px;
+  }
+  nav a {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; border-radius: 6px;
+    font-size: 12.5px; font-weight: 500; color: var(--slate-600);
+    text-decoration: none; transition: all 0.15s;
+    margin-bottom: 1px;
+  }
+  nav a .nav-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--slate-300); flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  nav a:hover { background: var(--primary-50); color: var(--primary-700); }
+  nav a:hover .nav-dot { background: var(--primary-400); }
+  nav a.active { background: var(--primary-50); color: var(--primary-700); font-weight: 600; }
+  nav a.active .nav-dot { background: var(--primary-600); }
+
+  .sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--slate-100);
+    font-size: 11px; color: var(--slate-400);
+  }
+
+  /* ── Main content ── */
+  main { flex: 1; overflow-y: auto; height: 100vh; }
+
+  /* ── Sections ── */
+  section {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 48px 48px 64px;
+    border-bottom: 1px solid var(--slate-200);
+  }
+  section:last-child { border-bottom: none; }
+
+  /* ── Cover ── */
+  #cover {
+    background: linear-gradient(135deg, var(--primary-800) 0%, var(--primary-900) 100%);
+    max-width: 100%;
+    padding: 72px 64px 64px;
+    border-bottom: none;
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+  #cover::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 70% 50%, rgba(59,130,246,0.3) 0%, transparent 60%);
+  }
+  #cover .cover-inner { position: relative; max-width: 900px; margin: 0 auto; }
+  #cover .cover-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 20px; padding: 5px 12px;
+    font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.9);
+    margin-bottom: 24px;
+  }
+  #cover h1 {
+    font-size: 40px; font-weight: 800; line-height: 1.2;
+    color: white; margin-bottom: 16px; letter-spacing: -0.02em;
+  }
+  #cover h1 span { color: #93c5fd; }
+  #cover p.lead {
+    font-size: 16px; color: rgba(255,255,255,0.75);
+    max-width: 560px; margin-bottom: 40px; line-height: 1.7;
+  }
+  .cover-meta {
+    display: flex; gap: 32px; flex-wrap: wrap;
+  }
+  .cover-meta-item { }
+  .cover-meta-item .label { font-size: 11px; color: rgba(255,255,255,0.5); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+  .cover-meta-item .value { font-size: 14px; font-weight: 600; color: white; }
+
+  /* ── Typography ── */
+  h2 {
+    font-size: 24px; font-weight: 700; color: var(--slate-800);
+    margin-bottom: 8px; letter-spacing: -0.02em;
+  }
+  h3 {
+    font-size: 17px; font-weight: 700; color: var(--slate-800);
+    margin: 28px 0 12px;
+  }
+  h4 {
+    font-size: 14px; font-weight: 600; color: var(--slate-700);
+    margin: 20px 0 8px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .section-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 12px;
+  }
+  .section-label .dot { width: 6px; height: 6px; border-radius: 50%; }
+  p { margin-bottom: 12px; font-size: 14px; color: var(--slate-600); line-height: 1.7; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11.5px; font-weight: 600;
+  }
+  .badge-blue   { background: var(--primary-50);  color: var(--primary-700); border: 1px solid var(--primary-200); }
+  .badge-green  { background: var(--green-50);     color: var(--green-700);   border: 1px solid var(--green-100); }
+  .badge-amber  { background: var(--amber-50);     color: var(--amber-600);   border: 1px solid var(--amber-100); }
+  .badge-red    { background: var(--red-50);       color: var(--red-600);     border: 1px solid var(--red-100); }
+  .badge-slate  { background: var(--slate-100);    color: var(--slate-600);   border: 1px solid var(--slate-200); }
+  .badge-purple { background: var(--purple-50);    color: var(--purple-700);  border: 1px solid var(--purple-100); }
+
+  /* ── Phase pill ── */
+  .phase-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .phase-0 { background: var(--slate-100); color: var(--slate-700); border: 1px solid var(--slate-200); }
+  .phase-1 { background: var(--primary-50); color: var(--primary-700); border: 1px solid var(--primary-200); }
+  .phase-2 { background: var(--amber-50); color: var(--amber-600); border: 1px solid var(--amber-100); }
+  .phase-3 { background: var(--purple-50); color: var(--purple-700); border: 1px solid var(--purple-100); }
+  .phase-4 { background: var(--slate-800); color: white; }
+
+  /* ── Cards ── */
+  .card {
+    background: white; border: 1px solid var(--slate-200);
+    border-radius: 10px; padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card-blue   { border-left: 3px solid var(--primary-500); }
+  .card-green  { border-left: 3px solid var(--green-500); }
+  .card-amber  { border-left: 3px solid var(--amber-500); }
+  .card-red    { border-left: 3px solid var(--red-500); }
+  .card-purple { border-left: 3px solid var(--purple-600); }
+
+  /* ── Grid ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  /* ── Pros/Cons ── */
+  .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .pros-cons .col { background: white; border: 1px solid var(--slate-200); border-radius: 10px; padding: 16px 20px; }
+  .pros-cons .col.pros { border-top: 3px solid var(--green-500); }
+  .pros-cons .col.cons { border-top: 3px solid var(--red-500); }
+  .pros-cons .col h4 { margin-top: 0; margin-bottom: 10px; font-size: 12px; }
+  .pros-cons .col.pros h4 { color: var(--green-700); }
+  .pros-cons .col.cons h4 { color: var(--red-600); }
+  .pros-cons ul { list-style: none; padding: 0; }
+  .pros-cons li { font-size: 13px; color: var(--slate-600); padding: 4px 0; display: flex; gap: 8px; align-items: flex-start; }
+  .pros-cons li::before { font-size: 11px; margin-top: 3px; flex-shrink: 0; }
+  .pros-cons .pros li::before { content: '✓'; color: var(--green-600); font-weight: 700; }
+  .pros-cons .cons li::before { content: '✕'; color: var(--red-500); font-weight: 700; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 16px 0; }
+  th {
+    background: var(--slate-50); padding: 10px 14px;
+    text-align: left; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--slate-500); border-bottom: 2px solid var(--slate-200);
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--slate-100); color: var(--slate-600); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--slate-50); }
+
+  /* ── Code blocks ── */
+  .code-block {
+    background: var(--slate-800); color: #e2e8f0;
+    border-radius: 8px; padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px; line-height: 1.6;
+    margin: 16px 0; overflow-x: auto;
+  }
+  .code-block .comment { color: #64748b; }
+  .code-block .keyword { color: #93c5fd; }
+  .code-block .string  { color: #86efac; }
+  .code-block .fn      { color: #fde68a; }
+
+  /* ── Flow diagram ── */
+  .flow {
+    display: flex; align-items: flex-start;
+    gap: 0; margin: 20px 0; flex-wrap: wrap;
+  }
+  .flow-item {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 6px;
+  }
+  .flow-box {
+    background: white; border: 1px solid var(--slate-300);
+    border-radius: 8px; padding: 10px 16px;
+    font-size: 12.5px; font-weight: 500; color: var(--slate-700);
+    text-align: center; min-width: 110px;
+  }
+  .flow-box.blue   { border-color: var(--primary-300); background: var(--primary-50); color: var(--primary-700); }
+  .flow-box.green  { border-color: #86efac; background: var(--green-50); color: var(--green-700); }
+  .flow-box.amber  { border-color: #fcd34d; background: var(--amber-50); color: var(--amber-600); }
+  .flow-box.red    { border-color: #fca5a5; background: var(--red-50); color: var(--red-600); }
+  .flow-box.purple { border-color: #d8b4fe; background: var(--purple-50); color: var(--purple-700); }
+  .flow-arrow {
+    display: flex; align-items: center; padding: 0 8px;
+    color: var(--slate-400); font-size: 18px; font-weight: 300;
+    align-self: center;
+  }
+  .flow-label { font-size: 11px; color: var(--slate-400); font-weight: 500; }
+
+  /* ── Callout ── */
+  .callout {
+    border-radius: 8px; padding: 14px 18px;
+    font-size: 13.5px; display: flex; gap: 12px; align-items: flex-start;
+    margin: 16px 0;
+  }
+  .callout .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .callout-blue   { background: var(--primary-50); border: 1px solid var(--primary-200); color: var(--primary-800); }
+  .callout-amber  { background: var(--amber-50);   border: 1px solid var(--amber-100);   color: var(--amber-700); }
+  .callout-green  { background: var(--green-50);   border: 1px solid var(--green-100);   color: var(--green-700); }
+  .callout-red    { background: var(--red-50);     border: 1px solid var(--red-100);     color: var(--red-700); }
+  .callout-purple { background: var(--purple-50);  border: 1px solid var(--purple-100);  color: var(--purple-700); }
+
+  /* ── Stat boxes ── */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .stat-box {
+    background: white; border: 1px solid var(--slate-200);
+    border-radius: 10px; padding: 16px;
+  }
+  .stat-box .stat-val { font-size: 22px; font-weight: 800; color: var(--slate-800); line-height: 1; margin-bottom: 4px; }
+  .stat-box .stat-label { font-size: 11.5px; color: var(--slate-500); font-weight: 500; }
+  .stat-box .stat-sub { font-size: 11px; color: var(--slate-400); margin-top: 3px; }
+
+  /* ── Timeline ── */
+  .timeline { margin: 20px 0; }
+  .timeline-item {
+    display: flex; gap: 16px; margin-bottom: 20px; position: relative;
+  }
+  .timeline-item::before {
+    content: ''; position: absolute; left: 17px; top: 32px;
+    width: 2px; bottom: -20px; background: var(--slate-200);
+  }
+  .timeline-item:last-child::before { display: none; }
+  .timeline-dot {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; border: 2px solid;
+  }
+  .tl-0 { background: var(--slate-100); border-color: var(--slate-300); color: var(--slate-600); }
+  .tl-1 { background: var(--primary-50); border-color: var(--primary-400); color: var(--primary-700); }
+  .tl-2 { background: var(--amber-50); border-color: var(--amber-400); color: var(--amber-700); }
+  .tl-3 { background: var(--purple-50); border-color: #c084fc; color: var(--purple-700); }
+  .tl-4 { background: var(--slate-800); border-color: var(--slate-700); color: white; }
+  .timeline-content { flex: 1; padding-top: 6px; }
+  .timeline-content .tl-title { font-weight: 700; font-size: 15px; color: var(--slate-800); margin-bottom: 4px; }
+  .timeline-content .tl-period { font-size: 12px; color: var(--slate-400); font-weight: 500; margin-bottom: 6px; }
+  .timeline-content .tl-body { font-size: 13px; color: var(--slate-600); }
+
+  /* ── Confidence diagram ── */
+  .confidence-flow {
+    background: white; border: 1px solid var(--slate-200);
+    border-radius: 10px; padding: 24px;
+    margin: 20px 0;
+  }
+  .cf-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px; }
+  .cf-box {
+    padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; text-align: center;
+    min-width: 130px;
+  }
+  .cf-diamond {
+    padding: 12px 20px; border-radius: 8px;
+    font-size: 12.5px; font-weight: 600; text-align: center;
+    background: var(--amber-50); border: 2px dashed var(--amber-400); color: var(--amber-700);
+    min-width: 160px;
+  }
+  .cf-arrow { font-size: 22px; color: var(--slate-300); font-weight: 300; }
+  .cf-label { font-size: 11px; color: var(--slate-400); font-weight: 500; white-space: nowrap; }
+
+  /* ── Q&A ── */
+  .qa-item { margin-bottom: 20px; }
+  .qa-q {
+    background: var(--slate-800); color: white;
+    border-radius: 8px 8px 0 0; padding: 12px 16px;
+    font-size: 13.5px; font-weight: 600;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .qa-q .q-badge {
+    background: var(--primary-600); color: white;
+    border-radius: 4px; padding: 1px 7px; font-size: 11px;
+    font-weight: 700; flex-shrink: 0; margin-top: 1px;
+  }
+  .qa-a {
+    background: white; border: 1px solid var(--slate-200);
+    border-top: none; border-radius: 0 0 8px 8px;
+    padding: 14px 16px; font-size: 13.5px; color: var(--slate-600); line-height: 1.65;
+  }
+
+  /* ── Action items ── */
+  .action-list { list-style: none; padding: 0; margin: 0; }
+  .action-list li {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px 16px; background: white;
+    border: 1px solid var(--slate-200); border-radius: 8px;
+    margin-bottom: 8px; font-size: 13.5px; color: var(--slate-700);
+  }
+  .action-list .action-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--primary-600); color: white;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .action-list .action-body .action-title { font-weight: 600; color: var(--slate-800); margin-bottom: 2px; }
+  .action-list .action-body .action-desc { font-size: 12.5px; color: var(--slate-500); }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--slate-100); margin: 24px 0; }
+
+  /* ── Risk matrix ── */
+  .risk-row td:nth-child(2) { font-weight: 600; font-size: 13px; }
+  .risk-high   { color: var(--red-600); }
+  .risk-medium { color: var(--amber-600); }
+  .risk-low    { color: var(--green-600); }
+
+  /* Highlight ── */
+  .hl { background: var(--amber-100); color: var(--amber-700); padding: 1px 5px; border-radius: 3px; font-weight: 600; font-size: 13px; }
+
+  /* ── Print ── */
+  @media print {
+    #sidebar { display: none; }
+    body { display: block; }
+    main { height: auto; overflow: visible; }
+    section { page-break-inside: avoid; padding: 32px 40px; }
+    #cover { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<div style="background:#fef3c7;color:#78350f;border-bottom:2px solid #f59e0b;padding:12px 24px;font-family:Inter,sans-serif;font-size:14px;font-weight:600;text-align:center;position:relative;z-index:1000;">
+  ⚠️ DEPRECATED (2026-08-01): CE DF Photos has been merged into wirelineapp.cloudextel.com and is no longer required for now. This roadmap is paused and kept for reference only.
+</div>
+
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<aside id="sidebar">
+  <div class="sidebar-brand">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <span class="logo-text">CE DF Photos</span>
+    </div>
+    <div class="subtitle">AI Strategy &amp; Roadmap</div>
+  </div>
+  <nav>
+    <div class="nav-label">Overview</div>
+    <a href="#cover"><span class="nav-dot"></span>Title</a>
+    <a href="#current-state"><span class="nav-dot"></span>Current State</a>
+    <a href="#confidence-routing"><span class="nav-dot"></span>Confidence Routing</a>
+
+    <div class="nav-label" style="margin-top:8px">Phases</div>
+    <a href="#phase1"><span class="nav-dot"></span>Phase 1 — Prompt Tuning</a>
+    <a href="#phase2"><span class="nav-dot"></span>Phase 2 — Hybrid Model</a>
+    <a href="#phase3"><span class="nav-dot"></span>Phase 3 — Custom VLM</a>
+    <a href="#phase4"><span class="nav-dot"></span>Phase 4 — Full In-House</a>
+
+    <div class="nav-label" style="margin-top:8px">Analysis</div>
+    <a href="#costs"><span class="nav-dot"></span>Cost Comparison</a>
+    <a href="#decision"><span class="nav-dot"></span>Decision Framework</a>
+    <a href="#risks"><span class="nav-dot"></span>Risk Register</a>
+    <a href="#qa"><span class="nav-dot"></span>Q&amp;A Prep</a>
+    <a href="#actions"><span class="nav-dot"></span>Immediate Actions</a>
+  </nav>
+  <div class="sidebar-footer">Prepared April 2026 · Tech Lead</div>
+</aside>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<main id="main-content">
+
+<!-- ── COVER ── -->
+<section id="cover">
+  <div class="cover-inner">
+    <div class="cover-badge">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+      AI Strategy Document — Internal Use
+    </div>
+    <h1>AI Photo Scoring<br/><span>Strategy &amp; Roadmap</span></h1>
+    <p class="lead">
+      A 4-phase technical roadmap for evolving our AI scoring system from direct Gemini API usage
+      to a domain-specialized, cost-optimised infrastructure — with decision gates and cost analysis at every step.
+    </p>
+    <div class="cover-meta">
+      <div class="cover-meta-item">
+        <div class="label">Current Model</div>
+        <div class="value">Gemini 2.0 Flash</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="label">Application</div>
+        <div class="value">CE DF Photos (Fiber QC)</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="label">Prepared By</div>
+        <div class="value">Tech Lead</div>
+      </div>
+      <div class="cover-meta-item">
+        <div class="label">Date</div>
+        <div class="value">April 2026</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CURRENT STATE ── -->
+<section id="current-state">
+  <div class="section-label" style="color:var(--slate-500)">
+    <span class="dot" style="background:var(--slate-400)"></span>
+    Phase 0 · Live Today
+  </div>
+  <h2>Current State — Direct Gemini API</h2>
+  <p>
+    Every field photo submitted through the app is scored automatically using Google's Gemini 2.0 Flash Vision model.
+    The system sends each image along with the checkpoint's technical specifications and the last 20 human reviewer
+    decisions as context — a technique called <strong>few-shot prompting</strong>.
+  </p>
+
+  <h3>How It Works</h3>
+  <div class="flow" style="align-items:center; gap:0;">
+    <div class="flow-item">
+      <div class="flow-box blue">Field Photo</div>
+      <div class="flow-label">JPEG on S3</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-item">
+      <div class="flow-box">Prompt Builder</div>
+      <div class="flow-label">Spec + Reviewer History</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-item">
+      <div class="flow-box amber">Gemini 2.0 Flash</div>
+      <div class="flow-label">Google API (~3s)</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-item">
+      <div class="flow-box green">Score + Confidence</div>
+      <div class="flow-label">0–100, high/med/low</div>
+    </div>
+  </div>
+
+  <h3>What the Model Returns</h3>
+  <div class="grid-4" style="margin-bottom:16px">
+    <div class="stat-box">
+      <div class="stat-val" style="color:var(--primary-600)">0–100</div>
+      <div class="stat-label">Score</div>
+      <div class="stat-sub">Quality rating</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-val" style="color:var(--amber-600)">3 levels</div>
+      <div class="stat-label">Confidence</div>
+      <div class="stat-sub">high / medium / low</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-val" style="color:var(--red-500)">issues[]</div>
+      <div class="stat-label">Problems Found</div>
+      <div class="stat-sub">Specific defects</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-val" style="color:var(--green-600)">positives[]</div>
+      <div class="stat-label">Good Points</div>
+      <div class="stat-sub">Compliance notes</div>
+    </div>
+  </div>
+
+  <div class="pros-cons">
+    <div class="col pros">
+      <h4>Advantages</h4>
+      <ul>
+        <li>Zero ML infrastructure to maintain</li>
+        <li>World-class vision capability from day one</li>
+        <li>Handles edge cases, bad lighting, unusual angles natively</li>
+        <li>Prompt update = instant improvement, no retraining</li>
+        <li>No ML team or specialist required</li>
+        <li>Reviewer history as context is genuinely effective</li>
+      </ul>
+    </div>
+    <div class="col cons">
+      <h4>Limitations</h4>
+      <ul>
+        <li>Cost scales linearly — no economies of scale</li>
+        <li>2–5 second latency per photo (API round-trip)</li>
+        <li>Vendor dependency — pricing &amp; availability risk</li>
+        <li>Data transits Google servers (compliance exposure)</li>
+        <li>Black box — limited explainability beyond summary text</li>
+        <li>Accuracy ceiling for highly specialized domain patterns</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Current API Cost Model</h3>
+  <table>
+    <thead><tr><th>Volume</th><th>Photos / Month</th><th>Estimated Cost / Month</th><th>Cost per 1,000 Photos</th></tr></thead>
+    <tbody>
+      <tr><td>Low</td><td>1,000</td><td class="badge-green" style="padding:8px 14px;">~₹85 – ₹250</td><td>~$0.10 – $0.17</td></tr>
+      <tr><td>Medium</td><td>10,000</td><td>~₹850 – ₹2,500</td><td>~$0.10 – $0.17</td></tr>
+      <tr><td>High</td><td>100,000</td><td class="badge-amber" style="padding:8px 14px;">~₹8,500 – ₹25,000</td><td>~$0.10 – $0.17</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:12px; color:var(--slate-400); margin-top:8px;">
+    Gemini 2.0 Flash: ~$0.075/1M input tokens. Each call = image (~500–1,500 tokens) + prompt (~800 tokens) ≈ 1,300–2,300 tokens total.
+    Rates as of early 2025; subject to Google pricing changes.
+  </p>
+
+  <div class="callout callout-amber">
+    <span class="icon">⚡</span>
+    <div>
+      <strong>The most valuable thing to do right now</strong> — collect every AI score alongside the human reviewer outcome. This labeled dataset is the foundation of every future option listed in this document. It costs nothing to collect and cannot be recovered retroactively.
+    </div>
+  </div>
+</section>
+
+<!-- ── CONFIDENCE-GATED ROUTING ── -->
+<section id="confidence-routing">
+  <div class="section-label" style="color:var(--primary-600)">
+    <span class="dot" style="background:var(--primary-500)"></span>
+    Key Concept · Phase 1 Quick Win
+  </div>
+  <h2>Confidence-Gated Routing</h2>
+  <p>
+    The Gemini model already returns a <strong>confidence field</strong> with every score: <code style="background:var(--slate-100);padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px">high</code>, <code style="background:var(--slate-100);padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px">medium</code>, or <code style="background:var(--slate-100);padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px">low</code>.
+    We are currently storing this but not acting on it. Confidence-gated routing means
+    <strong>using the model's own uncertainty signal to decide how much to trust its output</strong>
+    — without changing the model at all.
+  </p>
+
+  <h3>The Core Idea</h3>
+  <p>
+    Not all AI scores carry equal weight. A <strong>high-confidence score of 85</strong> means "I can clearly
+    see this photo meets the spec." A <strong>low-confidence score of 72</strong> means "the image is blurry /
+    I'm not sure what I'm looking at — this number is a rough guess."
+    Treating these identically risks both over-trusting wrong scores and wasting reviewer time on obviously good photos.
+  </p>
+
+  <div class="confidence-flow">
+    <div class="cf-row">
+      <div class="cf-box" style="background:var(--primary-50);border:1px solid var(--primary-200);color:var(--primary-700)">Incoming Photo<br/><span style="font-size:11px;font-weight:400">Gemini scored it</span></div>
+    </div>
+    <div class="cf-row"><div class="cf-arrow">↓</div></div>
+    <div class="cf-row">
+      <div class="cf-diamond">Check: confidence level?</div>
+    </div>
+    <div class="cf-row" style="gap:32px; align-items:flex-start; margin-top:8px;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <div class="cf-label" style="color:var(--green-600); font-weight:600">confidence = "high"</div>
+        <div class="cf-arrow" style="font-size:16px; color:var(--green-400)">↓</div>
+        <div class="cf-box" style="background:var(--green-50);border:1px solid #86efac;color:var(--green-700)">Score Trusted</div>
+        <div class="cf-label">Normal review flow</div>
+        <div class="cf-label">AI badge shown with confidence</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <div class="cf-label" style="color:var(--amber-600); font-weight:600">confidence = "medium"</div>
+        <div class="cf-arrow" style="font-size:16px; color:var(--amber-400)">↓</div>
+        <div class="cf-box" style="background:var(--amber-50);border:1px solid #fcd34d;color:var(--amber-700)">Score Advisory</div>
+        <div class="cf-label">Normal flow</div>
+        <div class="cf-label">Amber badge on review UI</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+        <div class="cf-label" style="color:var(--red-600); font-weight:600">confidence = "low"</div>
+        <div class="cf-arrow" style="font-size:16px; color:var(--red-400)">↓</div>
+        <div class="cf-box" style="background:var(--red-50);border:1px solid #fca5a5;color:var(--red-600)">Flag: Human Required</div>
+        <div class="cf-label">Bubbles to top of queue</div>
+        <div class="cf-label">Reviewer sees "AI Uncertain" badge</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Why This Matters</h3>
+  <div class="grid-2">
+    <div class="card card-red">
+      <h4 style="margin-top:0; color:var(--red-600)">The Problem Without Routing</h4>
+      <p style="font-size:13px; margin-bottom:0">
+        A photo with <code style="font-size:12px; background:var(--slate-100); padding:1px 5px; border-radius:3px">confidence=low, score=71</code> looks like a passing score.
+        A reviewer may rubber-stamp it. But the model was telling us it wasn't sure —
+        the photo may be blurry, taken at the wrong angle, or showing something ambiguous.
+        We silently trust a guess.
+      </p>
+    </div>
+    <div class="card card-green">
+      <h4 style="margin-top:0; color:var(--green-700)">The Outcome With Routing</h4>
+      <p style="font-size:13px; margin-bottom:0">
+        Low-confidence photos surface with a visual "⚠ AI Uncertain" badge. The reviewer
+        is primed to look carefully rather than rely on the score. This catches real defects
+        that would otherwise pass, and costs nothing — the confidence data is already there.
+      </p>
+    </div>
+  </div>
+
+  <h3>Implementation Plan</h3>
+  <p>This is entirely a backend query + UI change. No model changes. No infrastructure. Estimated effort: <strong>1–2 days</strong>.</p>
+
+  <div class="card" style="margin-top:0;">
+    <h4 style="margin-top:0">Step 1 — Review Queue Ordering (Backend, ~2h)</h4>
+    <p style="font-size:13px; margin-bottom:8px;">Modify the review page query to sort <code style="font-size:12px; background:var(--slate-100); padding:1px 5px; border-radius:3px">confidence='low'</code> photos to the top of the pending queue.</p>
+    <div class="code-block"><span class="comment">-- In the review queue SQL query</span>
+SELECT ps.*, ai.score, ai.confidence, ai.summary
+FROM photo_submissions ps
+LEFT JOIN photo_ai_scores ai ON ai.photo_submission_id = ps.id
+WHERE ps.status = 'pending'
+ORDER BY
+  <span class="keyword">CASE</span> ai.confidence
+    <span class="keyword">WHEN</span> <span class="string">'low'</span>    <span class="keyword">THEN</span> 1   <span class="comment">-- surface first</span>
+    <span class="keyword">WHEN</span> <span class="string">'medium'</span> <span class="keyword">THEN</span> 2
+    <span class="keyword">WHEN</span> <span class="string">'high'</span>   <span class="keyword">THEN</span> 3
+    <span class="keyword">ELSE</span> 2
+  <span class="keyword">END</span>,
+  ps.submitted_at DESC</div>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0">Step 2 — UI Badge &amp; Visual Alert (Frontend, ~3h)</h4>
+    <p style="font-size:13px; margin-bottom:8px;">On the review page, when <code style="font-size:12px; background:var(--slate-100); padding:1px 5px; border-radius:3px">confidence === 'low'</code>, show a prominent warning alongside the AI score badge.</p>
+    <div class="code-block"><span class="comment">// Review page — AI score badge component</span>
+{ai.confidence === <span class="string">'low'</span> && (
+  &lt;<span class="keyword">div</span> className=<span class="string">"rounded-lg border border-red-200 bg-red-50 p-3"</span>&gt;
+    &lt;<span class="fn">WarningIcon</span> /&gt;
+    &lt;<span class="keyword">span</span> className=<span class="string">"text-red-700 font-semibold text-sm"</span>&gt;
+      AI Uncertain — Review Carefully
+    &lt;/<span class="keyword">span</span>&gt;
+    &lt;<span class="keyword">p</span> className=<span class="string">"text-red-600 text-xs mt-1"</span>&gt;
+      Image quality or content prevented confident scoring.
+      Do not rely on the AI score — use your own judgement.
+    &lt;/<span class="keyword">p</span>&gt;
+  &lt;/<span class="keyword">div</span>&gt;
+)}</div>
+  </div>
+
+  <div class="card">
+    <h4 style="margin-top:0">Step 3 — Accuracy Dashboard Metric (Backend + UI, ~4h)</h4>
+    <p style="font-size:13px; margin-bottom:8px;">Track how often humans override AI per confidence level. This validates that routing is working — low-confidence scores should have a higher override rate.</p>
+    <div class="code-block"><span class="comment">-- Accuracy dashboard query</span>
+SELECT
+  ai.confidence,
+  COUNT(*) as total,
+  SUM(<span class="keyword">CASE WHEN</span>
+    (ai.score >= 70 <span class="keyword">AND</span> ps.status = <span class="string">'approved'</span>) <span class="keyword">OR</span>
+    (ai.score < 50  <span class="keyword">AND</span> ps.status = <span class="string">'nc'</span>)
+  <span class="keyword">THEN</span> 1 <span class="keyword">ELSE</span> 0 <span class="keyword">END</span>) as ai_agreed,
+  ROUND(100.0 * SUM(...) / COUNT(*), 1) as agreement_pct
+FROM photo_ai_scores ai
+JOIN photo_submissions ps ON ps.id = ai.photo_submission_id
+WHERE ps.status IN (<span class="string">'approved'</span>, <span class="string">'nc'</span>, <span class="string">'qc_required'</span>)
+GROUP BY ai.confidence</div>
+    <p style="font-size:12px; color:var(--slate-400); margin-top:8px; margin-bottom:0">
+      Expected result: agreement_pct for 'high' ≫ 'medium' ≫ 'low'. If not, the confidence signal itself needs calibration.
+    </p>
+  </div>
+
+  <div class="card" style="border-left:3px solid var(--purple-600);">
+    <h4 style="margin-top:0; color:var(--purple-700)">Optional Step 4 — Anchoring Bias Prevention (Advanced)</h4>
+    <p style="font-size:13px; margin-bottom:0">
+      When <code style="font-size:12px; background:var(--slate-100); padding:1px 5px; border-radius:3px">confidence='low'</code>, hide the numeric AI score entirely
+      and show only "⚠ AI Uncertain — score hidden." Research shows that displaying an uncertain score
+      causes reviewers to anchor to it even when told to ignore it. Hiding it produces more independent
+      human decisions, which are higher-quality training labels for future model training.
+    </p>
+  </div>
+
+  <div class="callout callout-blue">
+    <span class="icon">💡</span>
+    <div>
+      <strong>Dual value:</strong> Confidence routing immediately improves review quality (less rubber-stamping of uncertain scores).
+      Simultaneously, photos where the model says <code style="font-size:12px; background:var(--primary-100); padding:1px 5px; border-radius:3px">low confidence</code>
+      are your highest-value training examples for future model improvement — the model is showing you exactly
+      where it needs more domain knowledge.
+    </div>
+  </div>
+</section>
+
+<!-- ── PHASE 1 ── -->
+<section id="phase1">
+  <div class="phase-pill phase-1">Phase 1 · 0 – 12 Months</div>
+  <h2>Prompt Engineering &amp; Feedback Loop</h2>
+  <p>
+    No new model. Improve the existing Gemini integration by making the system learn from its
+    own outcomes and by systematically collecting the labeled dataset needed for all future phases.
+  </p>
+
+  <div class="grid-2" style="margin: 20px 0;">
+    <div class="card card-blue">
+      <h4 style="margin-top:0">Active Learning Queue</h4>
+      <p style="font-size:13px; margin-bottom:0">
+        Surface photos where <strong>AI score ≠ human decision</strong> to a "model calibration"
+        reviewer. These disagreements are the highest-value training examples.
+        A disagreement at high confidence is especially valuable — it means the model confidently got it wrong.
+      </p>
+    </div>
+    <div class="card card-blue">
+      <h4 style="margin-top:0">Per-Checkpoint Prompt Tuning</h4>
+      <p style="font-size:13px; margin-bottom:0">
+        Track agreement rate per checkpoint. Checkpoints where AI consistently underperforms
+        get custom system context added to their prompt — e.g., "For cable tray photos,
+        pay specific attention to bend radius compliance."
+      </p>
+    </div>
+    <div class="card card-blue">
+      <h4 style="margin-top:0">Confidence-Gated Routing</h4>
+      <p style="font-size:13px; margin-bottom:0">
+        Described in full in the previous section. When <code style="font-size:12px; background:var(--slate-100); padding:1px 5px; border-radius:3px">confidence='low'</code>,
+        auto-flag for mandatory careful review. Zero infrastructure change required.
+      </p>
+    </div>
+    <div class="card card-blue">
+      <h4 style="margin-top:0">Dataset Growing Pipeline</h4>
+      <p style="font-size:13px; margin-bottom:0">
+        Monthly export of <code style="font-size:12px; background:var(--slate-100); padding:1px 5px; border-radius:3px">(photo_s3_key, checkpoint_id, human_outcome, ai_score, ai_confidence)</code>.
+        This is a CSV. Free. It is the foundation of every Phase 2+ option.
+      </p>
+    </div>
+  </div>
+
+  <h3>Decision Gate to Phase 2</h3>
+  <table>
+    <thead><tr><th>Condition</th><th>Threshold</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Labeled pairs collected</td><td><span class="hl">≥ 1,000</span></td><td>Minimum viable training set for CLIP fine-tuning</td></tr>
+      <tr><td>Monthly API cost</td><td><span class="hl">&gt; $300/month</span></td><td>Phase 2 ROI becomes positive within 12 months</td></tr>
+      <tr><td>AI–human agreement plateau</td><td>No improvement for 3 months despite prompt changes</td><td>Prompt tuning has reached its ceiling; need training data</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout callout-green">
+    <span class="icon">✓</span>
+    <div><strong>Engineering cost:</strong> ~1–2 weeks total across the 4 workstreams above. No new infrastructure, no new dependencies. This phase operates entirely within the existing Next.js + SQLite stack.</div>
+  </div>
+</section>
+
+<!-- ── PHASE 2 ── -->
+<section id="phase2">
+  <div class="phase-pill phase-2">Phase 2 · 12 – 24 Months</div>
+  <h2>Hybrid Model — Local Classifier + Gemini Fallback</h2>
+  <p>
+    Not all photos are equal. Approximately 50–70% of submissions are clearly good or clearly bad —
+    obvious to any classifier trained on your data. Only ambiguous or edge-case photos need
+    the full power of Gemini. The hybrid approach routes traffic accordingly.
+  </p>
+
+  <h3>Architecture</h3>
+  <div class="flow" style="flex-direction:column; align-items:center; gap:4px;">
+    <div class="flow-box blue" style="width:200px">Incoming Photo</div>
+    <div class="flow-arrow" style="transform:rotate(90deg)">→</div>
+    <div class="flow-box amber" style="width:260px; padding:12px 16px">
+      Local CLIP Classifier<br/>
+      <span style="font-size:11px; font-weight:400">Fast · Free · ~50–150ms on CPU</span>
+    </div>
+    <div style="display:flex; align-items:flex-start; gap:40px; margin-top:8px;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+        <div class="flow-label" style="color:var(--green-600); font-weight:600">High Confidence ≥ threshold</div>
+        <div class="flow-arrow" style="transform:rotate(90deg)">→</div>
+        <div class="flow-box green" style="min-width:160px">Direct Score<br/><span style="font-size:11px; font-weight:400">Cost: $0 · Time: ~50ms</span></div>
+        <div class="flow-label">~60–70% of volume</div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+        <div class="flow-label" style="color:var(--amber-600); font-weight:600">Low Confidence &lt; threshold</div>
+        <div class="flow-arrow" style="transform:rotate(90deg)">→</div>
+        <div class="flow-box amber" style="min-width:160px">Gemini API<br/><span style="font-size:11px; font-weight:400">Cost: ~$0.0002 · Time: ~3s</span></div>
+        <div class="flow-label">~30–40% of volume</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>The Classifier: CLIP-Based (Recommended)</h3>
+  <p>
+    <strong>CLIP (Contrastive Language–Image Pretraining)</strong> is a model trained on 400 million image-text
+    pairs that understands both visual content and natural language descriptions together. Unlike a plain
+    image classifier, it understands that a photo labeled "cable tray inspection" should look different
+    from one labeled "duct sealing checkpoint." This matters because your checkpoints are diverse.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4 style="margin-top:0">Option A — Image-Only (MobileNet)</h4>
+      <ul style="list-style:none; padding:0; font-size:13px; color:var(--slate-600);">
+        <li style="padding:4px 0">→ ~4M parameters, runs on CPU in &lt;100ms</li>
+        <li style="padding:4px 0">→ Training data: 1,000–3,000 labeled images</li>
+        <li style="padding:4px 0 0 0">✕ Does not understand checkpoint spec text</li>
+        <li style="padding:4px 0">✕ Different checkpoint types need separate models</li>
+        <li style="padding:4px 0">✓ Simplest to deploy and maintain</li>
+      </ul>
+    </div>
+    <div class="card" style="border:2px solid var(--primary-300); position:relative; overflow:hidden;">
+      <div style="position:absolute; top:0; right:0; background:var(--primary-600); color:white; font-size:10px; font-weight:700; padding:3px 10px; border-radius:0 0 0 8px;">RECOMMENDED</div>
+      <h4 style="margin-top:0; color:var(--primary-700)">Option B — CLIP-Based (Vision + Language)</h4>
+      <ul style="list-style:none; padding:0; font-size:13px; color:var(--slate-600);">
+        <li style="padding:4px 0">→ ~150M parameters, runs on CPU in ~150ms</li>
+        <li style="padding:4px 0">→ Training data: 2,000–5,000 image-spec pairs</li>
+        <li style="padding:4px 0">✓ Understands checkpoint name + photo together</li>
+        <li style="padding:4px 0">✓ One model handles all checkpoint types</li>
+        <li style="padding:4px 0">✓ Transfers domain knowledge from existing CLIP base</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Fine-Tuning: What It Actually Means</h3>
+  <div class="callout callout-blue">
+    <span class="icon">📘</span>
+    <div>
+      <strong>Fine-tuning ≠ training from scratch.</strong> You start with a model that already understands
+      what images and text look like (trained on the internet), then continue training it on your domain data
+      for a few hours. Think of it as onboarding a senior engineer to your specific project — you're not
+      teaching them programming fundamentals, you're giving them domain orientation.
+    </div>
+  </div>
+
+  <h3>Training Pipeline</h3>
+  <div class="code-block"><span class="comment"># Phase 2 Training Pipeline (one-time setup, runs on GPU)</span>
+
+1. Export labeled dataset:
+   <span class="fn">photo_s3_key</span> + <span class="fn">checkpoint_id</span> + <span class="fn">human_outcome</span> → CSV
+
+2. Download images from S3 → local training set
+
+3. Fine-tune CLIP on your domain:
+   <span class="fn">python train_clip.py</span> \
+     --base-model <span class="string">openai/clip-vit-base-patch32</span> \
+     --dataset ./data/labeled_photos.csv \
+     --epochs 20 \
+     --output ./models/ce_df_clip_v1.pt
+   <span class="comment"># ~4–8 hours on single A100 GPU (one-time)</span>
+   <span class="comment"># Can use Google Colab Pro ($50/mo) or RunPod (~$1–2/GPU-hour)</span>
+
+4. Shadow mode: run in parallel with Gemini for 2–4 weeks
+   <span class="comment"># Log both scores. Do NOT route traffic yet. Measure agreement.</span>
+
+5. If agreement &gt; 92%, switch routing:
+   <span class="fn">confidence &gt;= 0.85</span> → local score only
+   <span class="fn">confidence &lt; 0.85</span>  → Gemini API</div>
+
+  <h3>Cost Analysis</h3>
+  <table>
+    <thead><tr><th>Item</th><th>One-Time Cost</th><th>Monthly Ongoing</th></tr></thead>
+    <tbody>
+      <tr><td>GPU fine-tuning (A100, ~8 hours)</td><td>$50–200</td><td>$0 (retrain quarterly)</td></tr>
+      <tr><td>Local inference (CPU on existing server)</td><td>$0</td><td>$0</td></tr>
+      <tr><td>Gemini API (reduced, ~30–40% of current)</td><td>—</td><td>30–40% of current cost</td></tr>
+      <tr><td>ML engineer (contract setup)</td><td>$5,000–15,000 (4–6 weeks)</td><td>—</td></tr>
+      <tr><td><strong>Break-even vs pure Gemini</strong></td><td colspan="2"><strong>~12–18 months if current Gemini cost &gt; $200/month</strong></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── PHASE 3 ── -->
+<section id="phase3">
+  <div class="phase-pill phase-3">Phase 3 · 24 – 36 Months</div>
+  <h2>Custom Domain Model — Fine-Tuned Vision Language Model</h2>
+  <p>
+    Replace Gemini entirely (or nearly) with a self-hosted <strong>Vision Language Model (VLM)</strong>
+    fine-tuned specifically on your fiber infrastructure domain. At sufficient data volume, a 7B parameter
+    domain-specialized model outperforms a general-purpose 100B+ parameter model on your specific task.
+  </p>
+
+  <h3>What is a VLM (Vision Language Model)?</h3>
+  <p>
+    A VLM is a neural network that understands both images and text together — like Gemini, but open-source
+    and self-hostable. Modern 7B VLMs (7 billion neural network parameters) run on a single consumer GPU
+    after quantization and match GPT-4V quality on domain-specific tasks when fine-tuned.
+  </p>
+
+  <h3>Model Options</h3>
+  <table>
+    <thead><tr><th>Model</th><th>Parameters</th><th>Strengths</th><th>License</th><th>Fine-tune Difficulty</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Qwen2-VL 7B</strong></td><td>7B</td>
+        <td>Strong multilingual, excellent reasoning, handles construction site photos well</td>
+        <td><span class="badge badge-green">Open</span></td>
+        <td><span class="badge badge-green">Low</span></td>
+      </tr>
+      <tr style="background:var(--primary-50);">
+        <td><strong>InternVL2 8B</strong> ⭐</td><td>8B</td>
+        <td>Best-in-class on industrial/technical inspection benchmarks</td>
+        <td><span class="badge badge-green">Open</span></td>
+        <td><span class="badge badge-amber">Medium</span></td>
+      </tr>
+      <tr>
+        <td><strong>Phi-3.5-Vision</strong></td><td>4B</td>
+        <td>Fast, low memory (4B params), MIT license — easiest deployment</td>
+        <td><span class="badge badge-green">MIT</span></td>
+        <td><span class="badge badge-green">Low</span></td>
+      </tr>
+      <tr>
+        <td><strong>Gemini (Vertex Fine-tune)</strong></td><td>—</td>
+        <td>Best accuracy, Google SLA, no infra management</td>
+        <td><span class="badge badge-red">Proprietary</span></td>
+        <td><span class="badge badge-amber">Medium</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>The Key Technologies Explained</h3>
+  <div class="grid-2" style="margin:16px 0">
+    <div class="card card-purple">
+      <h4 style="margin-top:0; color:var(--purple-700)">Quantization</h4>
+      <p style="font-size:13px; margin-bottom:0">
+        Reduces model precision from 32-bit floats to 4-bit integers.
+        A 7B model normally requires 28GB VRAM; quantized to 4-bit it needs ~4–6GB — runs on a consumer RTX 4080.
+        Accuracy loss: ~2–5%. Speed improvement: 4–8x. This is what makes local deployment economically viable.
+      </p>
+    </div>
+    <div class="card card-purple">
+      <h4 style="margin-top:0; color:var(--purple-700)">QLoRA (Fine-tuning Method)</h4>
+      <p style="font-size:13px; margin-bottom:0">
+        Instead of updating all 7 billion parameters (massively expensive), you add small "adapter"
+        layers (~10M parameters) and train only those on a quantized model. The base model's knowledge
+        is preserved; you add domain specialization on top.
+        Training on 5,000 photos: ~4–8 hours on one RTX 4090.
+      </p>
+    </div>
+  </div>
+
+  <div class="code-block"><span class="comment"># Fine-tuning a 7B VLM with QLoRA (simplified)</span>
+<span class="comment"># Runs on a single RTX 4090 (24GB VRAM) — ~$0.50/hr on RunPod</span>
+
+python train_vlm.py \
+  --model <span class="string">"Qwen/Qwen2-VL-7B-Instruct"</span> \
+  --dataset <span class="string">"./data/ce_df_5000_labeled.json"</span> \
+  --technique <span class="string">"qlora"</span> \               <span class="comment"># quantized LoRA adapters</span>
+  --lora-rank 16 \                 <span class="comment"># size of adapter layers</span>
+  --epochs 3 \                     <span class="comment"># 3 passes over your dataset</span>
+  --batch-size 4 \
+  --output <span class="string">"./models/ce_df_vlm_v1"</span>
+
+<span class="comment"># Result: base model + LoRA adapter (stored separately)</span>
+<span class="comment"># To roll back: just delete the adapter, base model is unchanged</span></div>
+
+  <h3>Training Data Requirements</h3>
+  <table>
+    <thead><tr><th>Quality Level</th><th>Labeled Examples Needed</th><th>Expected AI–Human Agreement</th><th>When Achievable</th></tr></thead>
+    <tbody>
+      <tr><td>Proof of concept</td><td>500–1,000</td><td>~75–80%</td><td>Phase 1 exit</td></tr>
+      <tr><td>MVP / internal use</td><td>1,000–3,000</td><td>~82–87%</td><td>~18 months in</td></tr>
+      <tr style="background:var(--green-50)"><td><strong>Production quality</strong></td><td><strong>5,000–10,000</strong></td><td><strong>~88–93%</strong></td><td><strong>~30 months in</strong></td></tr>
+      <tr><td>Best-in-class</td><td>10,000+</td><td>~93–97%</td><td>36+ months</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:12px; color:var(--slate-400);">For reference: Gemini (zero fine-tuning) on specialized industrial domains typically achieves ~80–88% agreement with domain experts.</p>
+
+  <h3>Self-Hosting Infrastructure</h3>
+  <div class="grid-3">
+    <div class="card">
+      <h4 style="margin-top:0">Option A — Rented GPU Server</h4>
+      <div class="badge badge-green" style="margin-bottom:8px;">Recommended</div>
+      <p style="font-size:13px; margin-bottom:4px">Hetzner / RunPod dedicated RTX 4090</p>
+      <p style="font-size:13px; color:var(--slate-500); margin-bottom:4px">~$300–450/month</p>
+      <p style="font-size:13px; margin-bottom:0">500,000+ photos/month capacity. Full data sovereignty.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Option B — Serverless GPU</h4>
+      <div class="badge badge-slate" style="margin-bottom:8px;">Bursty loads</div>
+      <p style="font-size:13px; margin-bottom:4px">Modal.com / Replicate</p>
+      <p style="font-size:13px; color:var(--slate-500); margin-bottom:4px">~$0.02–0.05 per 1,000 photos</p>
+      <p style="font-size:13px; margin-bottom:0">Scale to zero. Good for low/unpredictable volume.</p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">Option C — Vertex AI</h4>
+      <div class="badge badge-slate" style="margin-bottom:8px;">Stay on Google</div>
+      <p style="font-size:13px; margin-bottom:4px">Fine-tune Gemini via Google Cloud</p>
+      <p style="font-size:13px; color:var(--slate-500); margin-bottom:4px">Higher cost, Google SLA</p>
+      <p style="font-size:13px; margin-bottom:0">No infra management. Data stays on GCP.</p>
+    </div>
+  </div>
+
+  <h3>Phase 3 Cost Model</h3>
+  <table>
+    <thead><tr><th>Item</th><th>One-Time</th><th>Monthly</th></tr></thead>
+    <tbody>
+      <tr><td>QLoRA fine-tuning (~20 epochs)</td><td>$200–800</td><td>$0 (retrain semi-annually)</td></tr>
+      <tr><td>GPU inference server (RTX 4090)</td><td>$0 (rented)</td><td>$300–450</td></tr>
+      <tr><td>ML engineer (setup + integration)</td><td>$10,000–25,000</td><td>0.25–0.5 FTE ongoing</td></tr>
+      <tr><td>Data labeling (if outsourced, 5K labels)</td><td>$500–2,000</td><td>—</td></tr>
+      <tr><td><strong>Break-even vs Gemini API</strong></td><td colspan="2"><strong>~60,000–80,000 photos/month</strong></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── PHASE 4 ── -->
+<section id="phase4">
+  <div class="phase-pill phase-4">Phase 4 · 36+ Months</div>
+  <h2>Full In-House Infrastructure</h2>
+  <p>
+    At significant photo volume or under hard compliance requirements, full in-house GPU infrastructure
+    becomes the right answer. This is not about cutting costs — it's about control, compliance, and
+    the ability to iterate without external dependencies.
+  </p>
+
+  <h3>When to Trigger This Decision</h3>
+  <table>
+    <thead><tr><th>Trigger</th><th>Threshold</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>Monthly volume</td><td>Consistently &gt;200,000 photos/month</td><td>Dedicated GPU cheaper than any API</td></tr>
+      <tr><td>Data privacy / sovereignty</td><td>Hard requirement (DPDP Act, telecom regulations)</td><td>Self-host immediately, regardless of cost</td></tr>
+      <tr><td>Latency requirement</td><td>Real-time scoring &lt;200ms at scale</td><td>Local inference only viable path</td></tr>
+      <tr><td>Cost</td><td>Monthly API cost &gt; ₹50,000</td><td>Phase 3 break-even analysis — likely already done</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Full In-House Stack</h3>
+  <div class="code-block"><span class="comment">Production Architecture — Full In-House</span>
+
+App Server (DigitalOcean)        GPU Inference Server (Hetzner/AWS India)
+         |                                         ^
+    S3 Storage ──── REST inference API (FastAPI) ──┘
+                         |
+               Fine-tuned VLM (7B, quantized)
+               Served via vLLM engine
+               (handles batching, KV-cache, 2000+ req/min)
+
+<span class="comment">vLLM = production serving framework for large models</span>
+<span class="comment">Handles request queuing, continuous batching, memory management</span></div>
+
+  <h3>Ongoing MLOps Requirements</h3>
+  <p>
+    <strong>MLOps</strong> is the set of practices that keep a deployed ML model healthy over time —
+    analogous to DevOps for software, but with additional concerns around data and model drift.
+  </p>
+  <div class="grid-2">
+    <div>
+      <div class="card card-blue" style="margin-bottom:12px">
+        <h4 style="margin-top:0">Model Registry</h4>
+        <p style="font-size:13px; margin-bottom:0">Track model versions, training data snapshots, accuracy metrics. Roll back to previous version if a new deployment underperforms. Tools: MLflow, Weights &amp; Biases (both open-source options available).</p>
+      </div>
+      <div class="card card-blue">
+        <h4 style="margin-top:0">Evaluation Harness</h4>
+        <p style="font-size:13px; margin-bottom:0">Before every deployment, run the new model against a held-out test set (photos never seen during training). Must not regress on accuracy vs previous version. This is your safety gate.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card card-amber" style="margin-bottom:12px">
+        <h4 style="margin-top:0">Distribution Drift Monitoring</h4>
+        <p style="font-size:13px; margin-bottom:0">If score distribution suddenly shifts — e.g., all photos scoring 90+ — something is wrong. Could be: new checkpoint type, different camera, seasonal lighting change, or model degradation. Monitor score distribution weekly.</p>
+      </div>
+      <div class="card card-amber">
+        <h4 style="margin-top:0">Retraining Cadence</h4>
+        <p style="font-size:13px; margin-bottom:0">Quarterly minimum. As new checkpoint types are added or field conditions change, the model's training distribution shifts. Regular retraining on the latest labeled data keeps the model current.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3>Team Requirements</h3>
+  <table>
+    <thead><tr><th>Role</th><th>Phase 3</th><th>Phase 4</th></tr></thead>
+    <tbody>
+      <tr><td>ML Engineer</td><td>Contract, 4–6 weeks setup</td><td>0.5–1 FTE ongoing</td></tr>
+      <tr><td>Backend Engineer</td><td>Existing team (inference API integration)</td><td>Existing team</td></tr>
+      <tr><td>DevOps</td><td>Existing team (Docker container)</td><td>Existing team + GPU server mgmt</td></tr>
+      <tr><td>Data Labeler / QC Reviewer</td><td>Existing reviewers (already labeling)</td><td>Existing reviewers</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── COSTS ── -->
+<section id="costs">
+  <div class="section-label" style="color:var(--slate-500)">
+    <span class="dot" style="background:var(--slate-400)"></span>
+    Financial Analysis
+  </div>
+  <h2>Cost Comparison — All Phases</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>10K photos/mo</th>
+        <th>50K photos/mo</th>
+        <th>100K photos/mo</th>
+        <th>200K photos/mo</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-slate">Phase 0 — Gemini only</span></td>
+        <td>$15–30</td>
+        <td>$75–150</td>
+        <td>$150–300</td>
+        <td style="color:var(--red-600); font-weight:600">$300–600</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Phase 1 — Prompt tuning</span></td>
+        <td>$12–25 <span style="font-size:11px; color:var(--slate-400)">(+ dev time)</span></td>
+        <td>$60–125</td>
+        <td>$120–250</td>
+        <td>$240–500</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-amber">Phase 2 — Hybrid</span></td>
+        <td>$5–10 <span style="font-size:11px; color:var(--slate-400)">(after payback)</span></td>
+        <td>$20–50</td>
+        <td>$40–100</td>
+        <td style="color:var(--green-600); font-weight:600">$80–150</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Phase 3 — Custom VLM</span></td>
+        <td style="color:var(--red-600)">$320 <span style="font-size:11px; color:var(--slate-400)">(server flat)</span></td>
+        <td>$320</td>
+        <td style="color:var(--green-600); font-weight:600">$320</td>
+        <td style="color:var(--green-600); font-weight:600">$320</td>
+      </tr>
+      <tr>
+        <td><span class="badge" style="background:var(--slate-800); color:white; border-color:var(--slate-700)">Phase 4 — Full in-house</span></td>
+        <td style="color:var(--red-600)">$800 <span style="font-size:11px; color:var(--slate-400)">(A100 server)</span></td>
+        <td>$800</td>
+        <td>$800</td>
+        <td style="color:var(--green-600); font-weight:600">$800</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout callout-blue" style="margin-top:20px">
+    <span class="icon">📊</span>
+    <div>
+      <strong>Break-even points:</strong>
+      Phase 2 beats Phase 0 at ~25,000 photos/month (assuming $10K build cost amortized over 24 months).
+      Phase 3 beats Phase 0 at ~60,000–80,000 photos/month.
+      Phase 4 only makes economic sense above 500,000+ photos/month; its value is sovereignty and latency, not cost.
+    </div>
+  </div>
+</section>
+
+<!-- ── DECISION FRAMEWORK ── -->
+<section id="decision">
+  <div class="section-label" style="color:var(--slate-500)">
+    <span class="dot" style="background:var(--slate-400)"></span>
+    Strategic Planning
+  </div>
+  <h2>Decision Framework</h2>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <div class="timeline-dot tl-0">0</div>
+      <div class="timeline-content">
+        <div class="tl-title">Phase 0 → Phase 1</div>
+        <div class="tl-period">Now — Start immediately</div>
+        <div class="tl-body">You are live and collecting data. Add the accuracy dashboard, confidence-gated routing, and labeled data export pipeline this sprint. Zero risk, near-zero cost.</div>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot tl-1">1</div>
+      <div class="timeline-content">
+        <div class="tl-title">Phase 1 → Phase 2</div>
+        <div class="tl-period">Trigger: 1,000+ labeled pairs AND cost &gt; $300/mo OR accuracy plateau</div>
+        <div class="tl-body">At this point you have enough data for CLIP fine-tuning and a financial case for the hybrid model. Engage a contract ML engineer. Run shadow mode for 4 weeks before cutting over traffic.</div>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot tl-2">2</div>
+      <div class="timeline-content">
+        <div class="tl-title">Phase 2 → Phase 3</div>
+        <div class="tl-period">Trigger: 5,000+ labeled pairs AND cost &gt; $500/mo OR privacy requirement</div>
+        <div class="tl-body">With 5,000 labeled examples, a fine-tuned 7B VLM will outperform Gemini on your specific domain. The DPDP Act compliance benefit may accelerate this decision regardless of cost.</div>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot tl-3">3</div>
+      <div class="timeline-content">
+        <div class="tl-title">Phase 3 → Phase 4</div>
+        <div class="tl-period">Trigger: 200,000+ photos/month OR hard data sovereignty requirement</div>
+        <div class="tl-body">Dedicated A100 server on Indian data center (Jio Cloud, AWS ap-south-1). Full compliance, lowest per-unit cost at scale, sub-200ms latency. Requires 0.5 FTE ML engineering ongoing.</div>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot tl-4">4</div>
+      <div class="timeline-content">
+        <div class="tl-title">Phase 4 — Full In-House</div>
+        <div class="tl-period">36+ months — Optional, not mandatory</div>
+        <div class="tl-body">Many organizations stop at Phase 3 permanently. Phase 4 is for very high volume, strict compliance, or competitive differentiation through proprietary AI capability.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── RISKS ── -->
+<section id="risks">
+  <div class="section-label" style="color:var(--red-600)">
+    <span class="dot" style="background:var(--red-500)"></span>
+    Risk Management
+  </div>
+  <h2>Risk Register</h2>
+
+  <table class="risk-row">
+    <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Google raises Gemini pricing significantly</td>
+        <td class="risk-medium">Medium</td>
+        <td>High — direct cost increase</td>
+        <td>Phase 2 reduces API exposure by 60–70%. Phase 3 eliminates it.</td>
+      </tr>
+      <tr>
+        <td>Google deprecates Gemini 2.0 Flash</td>
+        <td class="risk-high">High (3–5 year horizon)</td>
+        <td>Low — manageable</td>
+        <td>Our API calls are abstracted in <code style="font-size:11px">lib/ai-scoring.ts</code>. Changing the model ID is a 1-line change.</td>
+      </tr>
+      <tr>
+        <td>Custom model underperforms on new checkpoint types</td>
+        <td class="risk-high">High (expected)</td>
+        <td>Medium</td>
+        <td>Always keep Gemini as fallback for <code style="font-size:11px">low confidence</code> predictions. New checkpoint types go to Gemini until we have training data.</td>
+      </tr>
+      <tr>
+        <td>Data privacy regulation (DPDP Act 2023)</td>
+        <td class="risk-medium">Medium</td>
+        <td>High — compliance risk</td>
+        <td>Phase 3 on Indian data center (AWS ap-south-1 / Jio Cloud) fully resolves. Can accelerate timeline if regulation tightens.</td>
+      </tr>
+      <tr>
+        <td>ML engineer leaves mid-project</td>
+        <td class="risk-medium">Medium</td>
+        <td>Medium</td>
+        <td>Use standard tooling (Hugging Face, MLflow). Maintain model cards and training scripts in git. Any ML engineer can pick it up.</td>
+      </tr>
+      <tr>
+        <td>Training data has label noise</td>
+        <td class="risk-high">High</td>
+        <td>Medium — model learns wrong patterns</td>
+        <td>For training examples, require 2-reviewer consensus, not single reviewer. Tag &amp; exclude disputed labels.</td>
+      </tr>
+      <tr>
+        <td>Score distribution drift (model degrades silently)</td>
+        <td class="risk-medium">Medium (Phase 3+)</td>
+        <td>High — bad scores go undetected</td>
+        <td>Weekly monitoring dashboard. Alert if weekly mean score shifts by &gt;5 points or if score distribution changes shape.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── Q&A ── -->
+<section id="qa">
+  <div class="section-label" style="color:var(--amber-600)">
+    <span class="dot" style="background:var(--amber-500)"></span>
+    Leadership Q&amp;A Prep
+  </div>
+  <h2>Anticipated Hard Questions</h2>
+
+  <div class="qa-item">
+    <div class="qa-q"><span class="q-badge">Q</span> Why not just keep using Gemini forever? It's working fine.</div>
+    <div class="qa-a">It may be the right answer for 2–3 years — and we're not proposing to change anything immediately. The point of this plan is to preserve our options. Collecting the labeled dataset today costs nothing extra, and it's the one thing we cannot recover retroactively if we wait. The investment triggers are all pull-based: we only move to the next phase when a specific cost or accuracy threshold is crossed. We're not over-investing in ML before we have data.</div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-q"><span class="q-badge">Q</span> What's the ROI on building our own model?</div>
+    <div class="qa-a">At 100K photos/month, Phase 3 saves roughly $150–250/month over Gemini. The one-time build cost of $15,000–25,000 has a 5–10 year payback on cost alone. The actual case is not cost — it's three things: (1) accuracy improvement from domain specialization — a model trained on 5,000 of our specific fiber inspection photos will outperform a general-purpose model; (2) latency — local inference is 10–15x faster, enabling real-time feedback during capture; (3) compliance — photos stay within our infrastructure, not Google's.</div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-q"><span class="q-badge">Q</span> How do we measure accuracy? How do we know if AI is doing a good job?</div>
+    <div class="qa-a">We define accuracy as <strong>AI–Human Agreement Rate</strong>: when the AI scores ≥70 and the human approves, that's agreement; when AI scores &lt;50 and human rejects, that's agreement. We track three metrics: <strong>Precision</strong> (of photos AI calls pass, what % do humans agree), <strong>Recall</strong> (of photos humans approve, what % does AI correctly pass), and <strong>F1</strong> (harmonic mean of both). These are tracked per checkpoint type, not just overall — so we know which checkpoint types the AI handles well vs. poorly.</div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-q"><span class="q-badge">Q</span> What if the custom model is wrong and we don't catch it?</div>
+    <div class="qa-a">Three safeguards: First, before any custom model goes to production, it must pass a held-out test of 500+ photos it has never seen, with human ground truth. If accuracy regresses vs. the previous version, the deployment is blocked. Second, for any prediction where the model's confidence is below threshold, we always route to Gemini as fallback — so we have a safety net. Third, we run distribution monitoring: if the mean score for a checkpoint shifts by more than 5 points week-over-week, an alert fires and someone investigates before the shift affects real decisions.</div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-q"><span class="q-badge">Q</span> How long does training a model take? I thought AI training takes weeks.</div>
+    <div class="qa-a">That's training from scratch, which we're not doing. Fine-tuning using QLoRA on a 7 billion parameter model with 5,000 examples takes approximately <strong>4–8 hours</strong> on a single A100 GPU. We don't own that GPU — we rent it for $1–2/hour for those 8 hours, then stop. The result is a set of adapter files (~100MB) that we keep. The bottleneck is dataset preparation and validation, not compute time.</div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-q"><span class="q-badge">Q</span> Do we need to hire an ML team?</div>
+    <div class="qa-a">For Phase 1: no new hires. For Phase 2: one contract ML engineer for 4–6 weeks to build the fine-tuning pipeline and integration. After that, our existing backend developers can maintain the inference service — it's a REST API call, not fundamentally different from calling Gemini. For Phase 3+: 0.5 FTE equivalent, which can be a combination of a part-time contract ML engineer plus our existing team handling the operational side. We are applying standard, well-documented techniques using open-source tooling — not building a research organization.</div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-q"><span class="q-badge">Q</span> What about data privacy? Are our infrastructure photos being used to train Google's models?</div>
+    <div class="qa-a">Under Google's enterprise API terms, your data is not used to train their models. However, photos do transit Google's servers — currently likely US/EU data centers. Under India's Digital Personal Data Protection Act (DPDP Act, 2023) and potential future sector-specific telecom regulations, infrastructure survey photos may eventually need to remain within Indian borders. Phase 3 self-hosted on AWS ap-south-1 (Mumbai) or Jio Cloud resolves this completely. We should monitor the regulatory situation but do not need to act immediately — the Phase 1–2 work can proceed regardless of how the regulation evolves.</div>
+  </div>
+
+  <div class="qa-item">
+    <div class="qa-q"><span class="q-badge">Q</span> Can we use free/open-source models right now instead of paying for Gemini?</div>
+    <div class="qa-a">Yes, technically. But without fine-tuning on our domain, open-source 7B models will perform <em>worse</em> than Gemini on our specific infrastructure photos — Gemini 2.0 Flash is genuinely excellent on out-of-the-box industrial vision tasks. The open-source advantage materializes only after fine-tuning on domain-specific data. Using an untuned open-source model to cut costs today would sacrifice accuracy. The right answer is: use Gemini now, collect data, then fine-tune open-source when we have sufficient labeled examples.</div>
+  </div>
+</section>
+
+<!-- ── ACTIONS ── -->
+<section id="actions">
+  <div class="section-label" style="color:var(--green-600)">
+    <span class="dot" style="background:var(--green-500)"></span>
+    Immediate Next Steps
+  </div>
+  <h2>Recommended Immediate Actions — This Quarter</h2>
+  <p>These four actions start Phase 1, require no new infrastructure, and build the foundation for every future option. Estimated total effort: ~2–3 weeks of dev work.</p>
+
+  <ul class="action-list">
+    <li>
+      <div class="action-num">1</div>
+      <div class="action-body">
+        <div class="action-title">Add AI Accuracy Dashboard</div>
+        <div class="action-desc">Track AI–human agreement rate per checkpoint. Show precision, recall, confidence distribution. This is the single most valuable visibility improvement and takes ~1 day to build. Baseline established, deviations detected, leadership gets a number.</div>
+      </div>
+    </li>
+    <li>
+      <div class="action-num">2</div>
+      <div class="action-body">
+        <div class="action-title">Implement Confidence-Gated Routing</div>
+        <div class="action-desc"><code style="font-size:12px; background:var(--slate-100); padding:1px 5px; border-radius:3px">confidence='low'</code> photos bubble to top of review queue and display a prominent "AI Uncertain — Review Carefully" badge. Optionally hide the numeric score to prevent anchoring bias. Estimated ~1–2 days. Improves review quality immediately.</div>
+      </div>
+    </li>
+    <li>
+      <div class="action-num">3</div>
+      <div class="action-body">
+        <div class="action-title">Start the Labeled Dataset Export</div>
+        <div class="action-desc">Monthly automated export of <code style="font-size:12px; background:var(--slate-100); padding:1px 5px; border-radius:3px">(photo_s3_key, checkpoint_id, checkpoint_name, human_outcome, ai_score, ai_confidence)</code> to a CSV. Store in S3. This is free to collect and cannot be recovered retroactively. It is the foundation of Phase 2 and Phase 3.</div>
+      </div>
+    </li>
+    <li>
+      <div class="action-num">4</div>
+      <div class="action-body">
+        <div class="action-title">Set a Phase 2 Review Milestone</div>
+        <div class="action-desc">Calendar a quarterly review when we hit 1,000 labeled pairs. At that meeting, check: API cost, agreement rate plateau, and dataset size. That is the decision point for engaging a contract ML engineer for Phase 2. No decision to make today — just set the trigger.</div>
+      </div>
+    </li>
+  </ul>
+
+  <hr class="divider" />
+
+  <div class="callout callout-green">
+    <span class="icon">✓</span>
+    <div>
+      <strong>The strategic position:</strong> We are not over-committing to an ML project before we have the data to justify it.
+      We are collecting that data at near-zero cost, improving the current system incrementally,
+      and defining precise, measurable triggers for each investment decision.
+      Every phase is individually reversible — we can stay at any phase indefinitely.
+    </div>
+  </div>
+
+  <div style="margin-top: 32px; padding: 20px 0; border-top: 1px solid var(--slate-200); display:flex; justify-content:space-between; align-items:center;">
+    <div style="font-size:12px; color:var(--slate-400);">CE DF Photos — AI Strategy &amp; Roadmap · April 2026 · Internal Use</div>
+    <div style="font-size:12px; color:var(--slate-400);">Prepared by Tech Lead</div>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('#sidebar nav a');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.getAttribute('id');
+        navLinks.forEach(link => {
+          link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { root: document.getElementById('main-content'), threshold: 0.3 });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

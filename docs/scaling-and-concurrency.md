@@ -1,3 +1,5 @@
+> **⚠️ DEPRECATED (2026-08-01):** This app has been merged into **wirelineapp.cloudextel.com** and is no longer required for now. Kept for reference only.
+
 # Scaling and Concurrency (30–40 Users)
 
 The app is designed to support **~30–40 concurrent users** (e.g. 20 in the field on mobile, 10 on laptop) and remain stable under that load.

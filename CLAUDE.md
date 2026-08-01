@@ -1,5 +1,7 @@
 # CE DF Photos — AI Tool Context
 
+> **⚠️ DEPRECATED (2026-08-01):** This app has been merged into **wirelineapp.cloudextel.com** and is no longer required for now. The production deployment on the DigitalOcean droplet below has been taken down. This document is kept for reference only.
+
 ## Project
 Next.js 16 photo-capture and review app for DF (Dark Fibre) infrastructure work.
 Field teams submit geotagged photos; reviewers approve/reject; AI (Gemini Vision) scores each photo.
@@ -168,3 +170,5 @@ ecosystem.config.js   PM2 config
 - **Scripts and env vars** — use `await import(...)` (dynamic) not `import` (static) in standalone scripts so `.env` loads before module init.
 - **DB is SQLite** — single writer, single PM2 instance. Do not scale to multiple Node processes.
 - **Build takes ~25s** — the old build keeps serving during the build step; downtime only during `pm2 restart` (~2s).
+- **Native module after npm install** — if `better-sqlite3` throws "Module did not self-register", run `npm rebuild better-sqlite3` then restart the dev server.
+- **nodemailer version** — project requires nodemailer `^7.0.7` (not v6). `next-auth` peer dependency enforces this.

@@ -4,6 +4,12 @@ import { useEffect, useRef, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import {
+  PHOTO_LOCATION_PIN_CLASS_NAME,
+  PHOTO_LOCATION_PIN_ICON_ANCHOR,
+  PHOTO_LOCATION_PIN_ICON_SIZE,
+  photoLocationPinIconHtml,
+} from '@/lib/leaflet-photo-pin';
 import 'leaflet/dist/leaflet.css';
 
 async function getRoutes() {
@@ -226,17 +232,11 @@ export default function MapPage() {
       function getIconForColor(color: string): L.DivIcon {
         let icon = iconCache.get(color);
         if (!icon) {
-          const escaped = color.replace(/"/g, '&quot;');
           icon = Leaflet.divIcon({
-            className: 'ce-df-photos-location-marker',
-            html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));" title="Photo location">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${escaped}" style="fill:${escaped}"/>
-                <circle cx="12" cy="9" r="2.5" fill="white"/>
-              </svg>
-            </div>`,
-            iconSize: [28, 28],
-            iconAnchor: [14, 28],
+            className: PHOTO_LOCATION_PIN_CLASS_NAME,
+            html: photoLocationPinIconHtml(color),
+            iconSize: [...PHOTO_LOCATION_PIN_ICON_SIZE],
+            iconAnchor: [...PHOTO_LOCATION_PIN_ICON_ANCHOR],
           });
           iconCache.set(color, icon);
         }

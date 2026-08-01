@@ -2,7 +2,7 @@ import { getToken } from 'next-auth/jwt';
 import { NextRequest } from 'next/server';
 import { getDb } from '@/lib/db';
 
-export type AllowedRole = 'Engineer' | 'Reviewer' | 'Admin';
+export type AllowedRole = 'Engineer' | 'Reviewer' | 'Admin' | 'Patroller';
 
 export async function getSessionOrDevBypass(request: NextRequest): Promise<{ user: { email?: string | null; name?: string | null } } | null> {
   const token = await getToken({
@@ -24,7 +24,7 @@ export async function getSessionOrDevBypass(request: NextRequest): Promise<{ use
 /** Resolve effective role from DB: field_worker or NULL → Reviewer. */
 function normalizeRole(raw: string | null | undefined): AllowedRole {
   const r = (raw ?? '').trim();
-  if (r === 'Engineer' || r === 'Reviewer' || r === 'Admin') return r;
+  if (r === 'Engineer' || r === 'Reviewer' || r === 'Admin' || r === 'Patroller') return r;
   return 'Reviewer';
 }
 

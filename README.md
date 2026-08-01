@@ -1,5 +1,7 @@
 # CE DF Photos
 
+> **⚠️ DEPRECATED (2026-08-01):** This app has been merged into **wirelineapp.cloudextel.com** and is no longer required for now. The production deployment has been taken down. This README is kept for reference only.
+
 Photo capture and review system for fiber optic installation quality control. Mobile-first PWA: capture photos per spec with geo-tagging, store on AWS S3, review on the web.
 
 **Stack:** Next.js 16, SQLite, NextAuth (Azure AD), AWS S3, IndexedDB (offline).

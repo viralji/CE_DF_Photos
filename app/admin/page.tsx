@@ -87,6 +87,16 @@ export default function AdminPage() {
     enabled: activeTab === 3 && !!meData?.user?.email,
   });
 
+  const { data: patrolAssignmentsData } = useQuery({
+    queryKey: ['patrol-assignments-admin'],
+    queryFn: async () => {
+      const res = await fetch('/api/patrol/assignments');
+      if (!res.ok) throw new Error('Failed');
+      return res.json();
+    },
+    enabled: activeTab === 5,
+  });
+
   const routes = (routesData?.routes ?? []) as { route_id: string; route_name: string; length?: number | null }[];
   const subsections = (subsectionsData?.subsections ?? []) as { route_id: string; subsection_id: string; subsection_name: string; length?: number | null }[];
   const checkpoints = (checkpointsData?.checkpoints ?? []) as {
@@ -134,6 +144,9 @@ export default function AdminPage() {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<AllowedRole>('Reviewer');
+  const [patrolPatrollerEmail, setPatrolPatrollerEmail] = useState('');
+  const [patrolRouteId, setPatrolRouteId] = useState('');
+  const [patrolInterval, setPatrolInterval] = useState('500');
 
   function scheduleMessageClear() {
     if (messageTimeoutRef.current != null) clearTimeout(messageTimeoutRef.current);
@@ -566,6 +579,7 @@ export default function AdminPage() {
             { label: 'Subsection emails', idx: 2 },
             { label: 'Users & roles', idx: 3 },
             { label: 'Settings', idx: 4 },
+            { label: 'Patrol', idx: 5 },
           ].map(({ label, idx }) => (
             <button
               key={idx}
@@ -1475,6 +1489,122 @@ export default function AdminPage() {
         </div>
         </div>
         )}
+        {activeTab === 5 && (
+        <div className="space-y-4">
+          <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-slate-900 text-sm">Patrol Assignments</h2>
+              <a href="/patrol/manager" className="text-xs text-blue-600 hover:underline">Open Manager Dashboard →</a>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">Assign patrollers to routes and set the mandatory photo interval. The patroller must take a photo at least every X metres.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Patroller email</label>
+                <input
+                  type="email"
+                  value={patrolPatrollerEmail}
+                  onChange={(e) => setPatrolPatrollerEmail(e.target.value)}
+                  placeholder="patroller@cloudextel.com"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Route</label>
+                <select
+                  value={patrolRouteId}
+                  onChange={(e) => setPatrolRouteId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select route…</option>
+                  {routes.map((r) => <option key={r.route_id} value={r.route_id}>{r.route_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Photo interval (m)</label>
+                <input
+                  type="number"
+                  min={50}
+                  step={50}
+                  value={patrolInterval}
+                  onChange={(e) => setPatrolInterval(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!patrolPatrollerEmail.trim() || !patrolRouteId) {
+                  setMessage('⚠️ Patroller email and route required.');
+                  scheduleMessageClear();
+                  return;
+                }
+                const res = await fetch('/api/patrol/assignments', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ route_id: patrolRouteId, patroller_email: patrolPatrollerEmail.trim(), photo_interval_meters: parseInt(patrolInterval, 10) || 500 }),
+                });
+                const data = await res.json();
+                if (!res.ok) { setMessage(`❌ ${data.error || 'Failed'}`); scheduleMessageClear(); return; }
+                setMessage('✓ Assignment saved.');
+                scheduleMessageClear();
+                setPatrolPatrollerEmail('');
+                setPatrolRouteId('');
+                setPatrolInterval('500');
+                queryClient.invalidateQueries({ queryKey: ['patrol-assignments-admin'] });
+              }}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+            >
+              Save Assignment
+            </button>
+          </div>
+
+          {(patrolAssignmentsData?.assignments ?? []).length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
+                  <tr>
+                    {['Patroller', 'Route', 'Interval', 'Status', 'Actions'].map((h) => (
+                      <th key={h} className="px-4 py-2 text-left font-medium">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(patrolAssignmentsData?.assignments ?? []).map((a: { id: number; patroller_email: string; route_name: string; route_id: string; photo_interval_meters: number; is_active: number }) => (
+                    <tr key={a.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-800">{a.patroller_email}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.route_name ?? a.route_id}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.photo_interval_meters}m</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${a.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {a.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await fetch(`/api/patrol/assignments/${a.id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ is_active: a.is_active ? 0 : 1 }),
+                            });
+                            queryClient.invalidateQueries({ queryKey: ['patrol-assignments-admin'] });
+                          }}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          {a.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        )}
+
       </main>
       </>
       )}
